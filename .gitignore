@@ -1,0 +1,22 @@
+# Dependency directories
+node_modules/
+
+# Environment variables & secrets (JANGAN DI-PUSH KE GITHUB)
+.env
+*.env.local
+
+# Logs
+logs/
+npm-debug.log*
+yarn-debug.log*
+
+# Database & SQLite files
+data/*.db
+data/*.db-journal
+
+# Temporary session data
+data/tunnel.json
+
+# Operating System Files
+.DS_Store
+Thumbs.db
