@@ -1,0 +1,5 @@
+{
+  "enabled": false,
+  "threshold": 0.99,
+  "blurStrength": 100
+}

@@ -1,0 +1,1875 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexus Mirror Bot Dashboard</title>
+    <meta name="description" content="Real-time monitoring dashboard for Discord to Telegram mirror bot with live activity log, statistics charts, and channel management.">
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Icons -->
+    <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="style.css?v=5">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo-details">
+                <i class='bx bx-git-compare'></i>
+                <span class="logo_name">Nexus Mirror</span>
+            </div>
+            <ul class="nav-links">
+                <li class="nav-category">UTAMA</li>
+                <li>
+                    <a href="#" class="active" data-target="dashboard" id="nav-dashboard">
+                        <i class='bx bx-grid-alt'></i>
+                        <span class="links_name">Dashboard</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="#" data-target="activity" id="nav-activity">
+                        <i class='bx bx-radio-circle-marked'></i>
+                        <span class="links_name">Activity Log</span>
+                        <span class="nav-badge" id="activity-badge" style="display:none">0</span>
+                    </a>
+                </li>
+
+                <li class="nav-category">ROUTING & MIRRORING</li>
+                <li>
+                    <a href="#" data-target="channels" id="nav-channels">
+                        <i class='bx bx-transfer'></i>
+                        <span class="links_name">Channels (DC→TG)</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="#" data-target="tg2dc" id="nav-tg2dc">
+                        <i class='bx bx-transfer-alt'></i>
+                        <span class="links_name">Channels (TG→DC)</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="#" data-target="bots-tokens" id="nav-bots-tokens">
+                        <i class='bx bx-bot'></i>
+                        <span class="links_name">Bots & Tokens</span>
+                    </a>
+                </li>
+
+                <li class="nav-category">FITUR CERDAS & KEAMANAN</li>
+                <li>
+                    <a href="#" data-target="crop" id="nav-crop">
+                        <i class='bx bx-crop'></i>
+                        <span class="links_name">Crop Settings</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="#" data-target="blur" id="nav-blur">
+                        <i class='bx bx-droplet'></i>
+                        <span class="links_name">Smart Blur</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="#" data-target="wordfilter" id="nav-wordfilter">
+                        <i class='bx bx-shield-x'></i>
+                        <span class="links_name">Filter Kata</span>
+                        <span class="nav-badge" id="wordfilter-badge" style="display:none; background: #f59e0b;">0</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="#" data-target="antispam" id="nav-antispam">
+                        <i class='bx bx-shield-quarter'></i>
+                        <span class="links_name">Anti-Spam GODMODE</span>
+                        <span class="nav-badge" id="antispam-badge" style="display:none; background: #ef4444;">!</span>
+                    </a>
+                </li>
+
+                <li class="nav-category">BANTUAN & PANDUAN</li>
+                <li>
+                    <a href="#" data-target="guide" id="nav-guide" style="color:#a855f7;">
+                        <i class='bx bx-book-open'></i>
+                        <span class="links_name" style="font-weight:600;">Panduan & Tutorial</span>
+                    </a>
+                </li>
+            </ul>
+            <div class="sidebar-footer">
+                <button id="btn-restart" class="btn-primary full-width">
+                    <i class='bx bx-power-off'></i> Restart Bot
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <section class="main-content">
+            <!-- Topbar -->
+            <nav class="topbar">
+                <div class="sidebar-button">
+                    <i class='bx bx-menu sidebarBtn'></i>
+                    <span class="dashboard" id="page-title">Dashboard</span>
+                </div>
+                <div class="topbar-actions">
+                    <!-- Quick Guide Button -->
+                    <button id="btn-topbar-guide" class="btn-guide-pill" title="Buka Pusat Panduan & Tutorial Lengkap">
+                        <i class='bx bx-book-open'></i>
+                        <span>Buku Panduan</span>
+                    </button>
+                    <!-- Quick AI Toggle Button (One-click ON/OFF) -->
+                    <button id="btn-topbar-ai-toggle" class="btn-ai-pill off" title="Klik untuk On/Off AI Watermark Cleaner (Tesseract & LaMa Inpainting)">
+                        <i class='bx bx-bolt-circle' id="topbar-ai-icon"></i>
+                        <span id="topbar-ai-text">⚡ Mode Cepat (AI OFF)</span>
+                    </button>
+                    <!-- Export / Import Buttons -->
+                    <button id="btn-export-config" class="btn-icon-text" title="Export Configuration">
+                        <i class='bx bx-download'></i>
+                        <span>Export</span>
+                    </button>
+                    <label id="btn-import-config" class="btn-icon-text" title="Import Configuration" style="cursor:pointer;">
+                        <i class='bx bx-upload'></i>
+                        <span>Import</span>
+                        <input type="file" id="import-file-input" accept=".json" style="display:none">
+                    </label>
+                    <!-- Dark/Light Mode Toggle -->
+                    <button id="theme-toggle" class="btn-icon" title="Toggle Dark/Light Mode">
+                        <i class='bx bx-moon' id="theme-icon"></i>
+                    </button>
+                    <div class="topbar-status">
+                        <span class="status-pulse"></span>
+                        <span id="status-text">Sistem Online</span>
+                    </div>
+                </div>
+            </nav>
+
+            <div class="content-wrapper">
+                
+                <!-- Toast Notification -->
+                <div id="toast" class="toast"></div>
+
+                <!-- DASHBOARD SECTION -->
+                <div id="section-dashboard" class="section active">
+                    <!-- Onboarding Guide Banner -->
+                    <div class="glass-card onboarding-banner" id="onboarding-card">
+                        <div class="onboarding-content">
+                            <div class="onboarding-badge"><i class='bx bx-sparkles'></i> PANDUAN CEPAT MEMULAI</div>
+                            <h2 style="font-size:1.35rem; margin-bottom:6px;">Selamat Datang di Nexus Mirror Dashboard! 🚀</h2>
+                            <p style="color:var(--text-secondary); font-size:0.9rem; margin-bottom:14px;">Bot mirror multi-arah tercepat untuk Discord dan Telegram. Mulai forward sinyal dalam 3 langkah mudah:</p>
+                            <div class="onboarding-steps">
+                                <div class="onboarding-step" id="step-guide-1">
+                                    <div class="step-num">1</div>
+                                    <div class="step-info">
+                                        <strong>Pasang Bot Telegram</strong>
+                                        <span>Buat bot di @BotFather & salin Token</span>
+                                    </div>
+                                </div>
+                                <div class="onboarding-step" id="step-guide-2">
+                                    <div class="step-num">2</div>
+                                    <div class="step-info">
+                                        <strong>Token Akun Discord</strong>
+                                        <span>Akun yang gabung di server VIP sumber</span>
+                                    </div>
+                                </div>
+                                <div class="onboarding-step" id="step-guide-3">
+                                    <div class="step-num">3</div>
+                                    <div class="step-info">
+                                        <strong>Buat Channel Mapping</strong>
+                                        <span>Hubungkan ke grup TG atau DC Webhook</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="onboarding-actions">
+                                <button class="btn-primary" id="btn-open-guide-banner">
+                                    <i class='bx bx-book-reader'></i> Buka Panduan Lengkap & Tutorial
+                                </button>
+                                <button class="btn-ghost" id="btn-open-channel-banner">
+                                    <i class='bx bx-plus'></i> Tambah Channel Mapping
+                                </button>
+                                <button class="btn-text-dismiss" id="btn-dismiss-banner">
+                                    <i class='bx bx-hide'></i> Tutup Sementara
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="overview-boxes">
+                        <div class="box">
+                            <div class="right-side">
+                                <div class="box-topic">Forwarded</div>
+                                <div class="number" id="stat-forwarded">0</div>
+                                <div class="indicator">
+                                    <i class='bx bx-up-arrow-alt'></i>
+                                    <span class="text">Messages</span>
+                                </div>
+                            </div>
+                            <i class='bx bx-send cart'></i>
+                        </div>
+                        <div class="box">
+                            <div class="right-side">
+                                <div class="box-topic">Media Sent</div>
+                                <div class="number" id="stat-media">0</div>
+                                <div class="indicator">
+                                    <i class='bx bx-up-arrow-alt'></i>
+                                    <span class="text">Attachments</span>
+                                </div>
+                            </div>
+                            <i class='bx bx-image cart two'></i>
+                        </div>
+                        <div class="box">
+                            <div class="right-side">
+                                <div class="box-topic">Failed</div>
+                                <div class="number" id="stat-failed">0</div>
+                                <div class="indicator">
+                                    <i class='bx bx-down-arrow-alt down'></i>
+                                    <span class="text">Retrying...</span>
+                                </div>
+                            </div>
+                            <i class='bx bx-error cart three'></i>
+                        </div>
+                        <div class="box">
+                            <div class="right-side">
+                                <div class="box-topic">Active Channels</div>
+                                <div class="number" id="stat-channels">0</div>
+                                <div class="indicator">
+                                    <i class='bx bx-up-arrow-alt'></i>
+                                    <span class="text">Mappings</span>
+                                </div>
+                            </div>
+                            <i class='bx bx-list-ul cart four'></i>
+                        </div>
+                    </div>
+
+                    <div class="system-stats-grid">
+                        <div class="glass-card">
+                            <h3>System Resources</h3>
+                            <div class="resource-bar">
+                                <div class="label">RAM Usage <span id="ram-text">0 MB</span></div>
+                                <div class="progress">
+                                    <div class="progress-bar" id="ram-bar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div class="resource-bar">
+                                <div class="label">CPU Load <span id="cpu-text">0.00</span></div>
+                                <div class="progress">
+                                    <div class="progress-bar info" id="cpu-bar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div class="resource-bar">
+                                <div class="label">Uptime <span id="uptime-text">0h 0m</span></div>
+                            </div>
+                        </div>
+                        <div class="glass-card">
+                            <h3>Bot Status</h3>
+                            <ul class="bot-details-list">
+                                <li><span>Telegram Bots</span> <strong id="stat-tbots">0</strong></li>
+                                <li><span>Muted Channels</span> <strong id="stat-muted">0</strong></li>
+                                <li><span>Blocked Users</span> <strong id="stat-blocked">0</strong></li>
+                                <li><span>Stored Messages</span> <strong id="stat-stored">0</strong></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Chart Section -->
+                    <div class="chart-grid" style="margin-top: 24px;">
+                        <div class="glass-card">
+                            <div class="card-header">
+                                <h3><i class='bx bx-bar-chart-alt-2'></i> Message Activity</h3>
+                                <div class="chart-period-btns">
+                                    <button class="chart-period-btn active" data-period="hour">Hour</button>
+                                    <button class="chart-period-btn" data-period="day">Day</button>
+                                </div>
+                            </div>
+                            <canvas id="chart-messages" height="120"></canvas>
+                        </div>
+                        <div class="glass-card">
+                            <div class="card-header">
+                                <h3><i class='bx bx-pie-chart-alt-2'></i> Success vs Failed</h3>
+                            </div>
+                            <canvas id="chart-ratio" height="120"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Mini Activity Feed on Dashboard -->
+                    <div class="glass-card" style="margin-top: 24px;">
+                        <div class="card-header">
+                            <h3><i class='bx bx-radio-circle-marked'></i> Recent Activity</h3>
+                            <a href="#" class="view-all-link" data-target="activity">View All →</a>
+                        </div>
+                        <div id="mini-activity-feed" class="activity-feed mini-feed">
+                            <div class="activity-empty">Waiting for activity...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CHANNELS SECTION -->
+                <div id="section-channels" class="section">
+                    <div class="section-header">
+                        <h2>Channel Mappings</h2>
+                        <button class="btn-primary" id="btn-add-channel"><i class='bx bx-plus'></i> Add Channel</button>
+                    </div>
+                    
+                    <div class="glass-card no-padding">
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Discord Channel ID</th>
+                                        <th>Telegram Chat ID</th>
+                                        <th>Bot Key / Thread ID</th>
+                                        <th>Discord Webhook (DC-to-DC)</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="channels-table-body">
+                                    <!-- Channels will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TG→DC CHANNELS SECTION -->
+                <div id="section-tg2dc" class="section">
+                    <div class="section-header">
+                        <h2>Telegram to Discord Mappings</h2>
+                        <button class="btn-primary" id="btn-add-tg2dc"><i class='bx bx-plus'></i> Add TG→DC Mapping</button>
+                    </div>
+                    
+                    <div class="glass-card no-padding">
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Telegram Chat ID</th>
+                                        <th>Discord Webhook URL</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tg2dc-table-body">
+                                    <!-- TG2DC Channels will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BOTS & TOKENS SECTION -->
+                <div id="section-bots-tokens" class="section">
+                    <div class="section-header">
+                        <h2>Bots & Discord Tokens</h2>
+                        <button class="btn-success" id="btn-save-config"><i class='bx bx-save'></i> Save Configuration</button>
+                    </div>
+
+                    <div class="config-grid">
+                        <!-- Telegram Bots -->
+                        <div class="glass-card">
+                            <div class="card-header">
+                                <h3><i class='bxl-telegram bx'></i> Telegram Bots</h3>
+                                <button class="btn-icon" id="btn-add-bot"><i class='bx bx-plus'></i></button>
+                            </div>
+                            <p class="subtitle">Multi-bot support. Assign each bot a number.</p>
+                            <div id="telegram-bots-container" class="input-group-list">
+                                <!-- Bots will be populated here -->
+                            </div>
+                        </div>
+
+                        <!-- Discord Tokens -->
+                        <div class="glass-card">
+                            <div class="card-header">
+                                <h3><i class='bx bxl-discord-alt'></i> Discord Tokens</h3>
+                                <button class="btn-icon" id="btn-add-token"><i class='bx bx-plus'></i></button>
+                            </div>
+                            <p class="subtitle">Multi-account support. Add tokens of accounts that are in the servers.</p>
+                            <div id="discord-tokens-container" class="input-group-list">
+                                <!-- Tokens will be populated here -->
+                            </div>
+                        </div>
+
+                        <!-- Telegram Userbot (TG->DC) -->
+                        <div class="glass-card span-full">
+                            <div class="card-header">
+                                <h3><i class='bx bx-user-circle'></i> Telegram Userbot (For TG→DC Mirror)</h3>
+                            </div>
+                            <p class="subtitle">Untuk menjalankan fitur TG→DC, bot harus masuk sebagai User (menggunakan GramJS session). Dapatkan API credentials di <a href="https://my.telegram.org" target="_blank" style="color:var(--primary-color)">my.telegram.org</a>. Generate session dengan menjalankan <code>node generate-tg-session.js</code> di terminal.</p>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>TG_API_ID</label>
+                                    <input type="text" id="config-tgApiId" class="form-control" placeholder="12345678">
+                                </div>
+                                <div class="form-group">
+                                    <label>TG_API_HASH</label>
+                                    <input type="text" id="config-tgApiHash" class="form-control" placeholder="abcdef1234567890abcdef1234567890">
+                                </div>
+                                <div class="form-group span-full">
+                                    <label>TG_USER_SESSIONS (Session String)</label>
+                                    <input type="password" id="config-tgUserSession" class="form-control" placeholder="1A... (Sangat Panjang)">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- General Config -->
+                        <div class="glass-card span-full">
+                            <div class="card-header">
+                                <h3><i class='bx bx-cog'></i> General Settings</h3>
+                            </div>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Watermark</label>
+                                    <input type="text" id="config-watermark" class="form-control" placeholder="🔄 Nexus Mirror">
+                                </div>
+                                <div class="form-group">
+                                    <label>Admin Telegram ID</label>
+                                    <input type="text" id="config-admin" class="form-control" placeholder="123456789">
+                                </div>
+                                <div class="form-group">
+                                    <label>Admin Bot Key</label>
+                                    <input type="number" id="config-adminBotKey" class="form-control" placeholder="1">
+                                </div>
+                                <div class="form-group">
+                                    <label>Health Check Port</label>
+                                    <input type="number" id="config-healthPort" class="form-control" placeholder="3000">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Forwarding Preferences -->
+                        <div class="glass-card span-full">
+                            <div class="card-header">
+                                <h3><i class='bx bx-transfer'></i> Forwarding Preferences</h3>
+                            </div>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; margin-top: 10px;">
+                                <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+                                    <input type="checkbox" id="config-forwardBot" style="width:16px; height:16px;">
+                                    <span>Forward Bot Messages</span>
+                                </label>
+                                <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+                                    <input type="checkbox" id="config-forwardEdits" style="width:16px; height:16px;">
+                                    <span>Forward Edits</span>
+                                </label>
+                                <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+                                    <input type="checkbox" id="config-forwardReactions" style="width:16px; height:16px;">
+                                    <span>Forward Reactions</span>
+                                </label>
+                                <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+                                    <input type="checkbox" id="config-showAuthor" style="width:16px; height:16px;">
+                                    <span>Show Author Name</span>
+                                </label>
+                                <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+                                    <input type="checkbox" id="config-showChannel" style="width:16px; height:16px;">
+                                    <span>Show Channel Name</span>
+                                </label>
+                                <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+                                    <input type="checkbox" id="config-showServer" style="width:16px; height:16px;">
+                                    <span>Show Server Name</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Discord to Discord (DC ➔ DC Webhook) Settings -->
+                        <div class="glass-card span-full">
+                            <div class="card-header">
+                                <h3><i class='bx bxl-discord'></i> Discord to Discord (DC ➔ DC Webhook) Settings</h3>
+                            </div>
+                            <p class="subtitle">Pengaturan bawaan global untuk mirror antar server Discord via Webhook.</p>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 15px; margin-top: 10px; margin-bottom: 15px;">
+                                <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+                                    <input type="checkbox" id="config-dcReplyQuote" style="width:16px; height:16px;">
+                                    <span>Kutipan Reply Context</span>
+                                </label>
+                                <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+                                    <input type="checkbox" id="config-dcStripInvites" style="width:16px; height:16px;">
+                                    <span>Hapus Link Invite Sumber</span>
+                                </label>
+                                <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+                                    <input type="checkbox" id="config-dcOnlyWithMedia" style="width:16px; height:16px;">
+                                    <span>Hanya Teruskan Media/Embed</span>
+                                </label>
+                            </div>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Default Custom Bot Name (Whitelabel)</label>
+                                    <input type="text" id="config-dcCustomName" class="form-control" placeholder="Kosongkan jika pakai nama pengirim asli">
+                                </div>
+                                <div class="form-group">
+                                    <label>Default Custom Avatar URL</label>
+                                    <input type="url" id="config-dcCustomAvatar" class="form-control" placeholder="https://...">
+                                </div>
+                                <div class="form-group span-full">
+                                    <label>Default Auto-Ping (Mention Role)</label>
+                                    <input type="text" id="config-dcAutoPing" class="form-control" placeholder="Contoh: @everyone atau <@&ROLE_ID>">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Filters & Limits -->
+                        <div class="glass-card span-full">
+                            <div class="card-header">
+                                <h3><i class='bx bx-filter-alt'></i> Filters & Limits</h3>
+                            </div>
+                            <div class="form-grid">
+                                <div class="form-group span-full">
+                                    <label>Blocked User IDs (pisahkan dengan koma)</label>
+                                    <input type="text" id="config-blockedUsers" class="form-control" placeholder="Contoh: 12345678, 87654321">
+                                </div>
+                                <div class="form-group span-full">
+                                    <label>Blacklist Words (pisahkan dengan koma)</label>
+                                    <input type="text" id="config-blacklistWords" class="form-control" placeholder="Kata yang dilarang">
+                                </div>
+                                <div class="form-group span-full">
+                                    <label>Whitelist Words (kosongkan untuk allow all)</label>
+                                    <input type="text" id="config-whitelistWords" class="form-control" placeholder="Pesan harus mengandung kata ini">
+                                </div>
+                                <div class="form-group">
+                                    <label>Max Message Length</label>
+                                    <input type="number" id="config-maxLength" class="form-control" placeholder="4000">
+                                </div>
+                                <div class="form-group">
+                                    <label>Rate Limit Delay (ms)</label>
+                                    <input type="number" id="config-rateLimit" class="form-control" placeholder="200">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Image Watermark Config & Visual Editor -->
+                        <div class="glass-card span-full" id="visual-editor-card">
+                            <div class="card-header">
+                                <h3><i class='bx bx-edit-alt'></i> Visual Editor (Watermark & Blur)</h3>
+                                <label class="switch">
+                                    <input type="checkbox" id="wm-enabled">
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                            <p class="subtitle">Upload a sample image to position your watermark and draw blur areas. These settings will be applied automatically to forwarded images.</p>
+                            
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Upload Logo (PNG/JPG)</label>
+                                    <input type="file" id="wm-file" class="form-control" accept=".png,.jpg,.jpeg">
+                                    <small id="wm-status" style="color: var(--success-color); display: none; margin-top: 5px;"><i class='bx bx-check'></i> Logo ready</small>
+                                </div>
+                                <div class="form-group">
+                                    <label>Upload Sample Image (For Preview Only)</label>
+                                    <input type="file" id="sample-image-file" class="form-control" accept="image/*">
+                                </div>
+                            </div>
+                            
+                            <div class="form-grid" id="wm-advanced-settings">
+                                <div class="form-group">
+                                    <label>Watermark Size (%) relative to image width</label>
+                                    <input type="number" id="wm-size" class="form-control" min="5" max="100" value="20">
+                                </div>
+                                <div class="form-group">
+                                    <label>Watermark Opacity (0.1 to 1.0)</label>
+                                    <input type="number" id="wm-opacity" class="form-control" step="0.1" min="0.1" max="1.0" value="0.8">
+                                </div>
+                            </div>
+
+                            <div class="editor-toolbar">
+                                <button id="btn-mode-watermark" class="btn-primary active"><i class='bx bx-image'></i> Position Watermark</button>
+                                <button id="btn-mode-blur" class="btn-ghost"><i class='bx bx-droplet'></i> Add Blur Area</button>
+                                <button id="btn-clear-blur" class="btn-danger-soft"><i class='bx bx-trash'></i> Clear Blurs</button>
+                            </div>
+
+                            <div class="visual-editor-container" id="visual-editor-container">
+                                <div class="visual-editor-placeholder" id="visual-editor-placeholder">Upload a sample image to start editing</div>
+                                <img id="sample-image-preview" src="" alt="Sample" style="display:none;">
+                                <div id="watermark-draggable" class="draggable-watermark" style="display:none;">
+                                    <img id="watermark-preview-img" src="" alt="Logo">
+                                </div>
+                                <div id="blur-layer" class="blur-layer" style="display:none;"></div>
+                            </div>
+
+                            <button class="btn-success" id="btn-save-watermark" style="margin-top: 15px;"><i class='bx bx-save'></i> Save Watermark & Blur Settings</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ACTIVITY LOG SECTION -->
+                <div id="section-activity" class="section">
+                    <div class="section-header">
+                        <h2>Live Activity Log</h2>
+                        <div style="display:flex; gap:12px; align-items:center;">
+                            <div class="sse-status" id="sse-status">
+                                <div class="pulse-indicator"></div>
+                                <span>Live</span>
+                            </div>
+                            <button id="btn-clear-log" class="btn-icon-text btn-danger-soft">
+                                <i class='bx bx-trash'></i> Clear
+                            </button>
+                        </div>
+                    </div>
+                    <div class="glass-card no-padding activity-log-card">
+                        <div id="activity-feed" class="activity-feed full-feed">
+                            <div class="activity-empty">Waiting for events... <br><small>Events will appear here as the bot forwards messages.</small></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CROP SETTINGS SECTION -->
+                <div id="section-crop" class="section">
+                    <div class="section-header">
+                        <h2><i class='bx bx-crop'></i> Crop Settings</h2>
+                        <button class="btn-primary" id="btn-add-crop-channel">
+                            <i class='bx bx-plus'></i> Add Channel Crop
+                        </button>
+                    </div>
+
+                    <div class="glass-card" style="margin-bottom:20px;">
+                        <p class="subtitle" style="margin:0;">
+                            <i class='bx bx-info-circle' style="color:var(--info-color)"></i>
+                            Fitur Crop memungkinkan Anda memotong area tertentu dari gambar sebelum diteruskan ke Discord.
+                            Setiap Discord Channel ID bisa memiliki pengaturan crop yang berbeda.
+                            Crop hanya aktif untuk channel yang Anda aktifkan.
+                        </p>
+                    </div>
+
+                    <!-- Daftar crop configs yang tersimpan -->
+                    <div id="crop-channel-list" class="crop-channel-list">
+                        <!-- Akan diisi oleh JS -->
+                        <div class="activity-empty" id="crop-empty-msg">Belum ada crop config. Klik "Add Channel Crop" untuk mulai.</div>
+                    </div>
+
+                    <!-- Editor Visual Crop -->
+                    <div class="glass-card" id="crop-editor-card" style="margin-top:20px; display:none;">
+                        <div class="card-header">
+                            <h3><i class='bx bx-edit-alt'></i> Visual Crop Editor</h3>
+                            <div style="display:flex; gap:10px; align-items:center;">
+                                <span id="crop-editing-channel-label" style="font-size:0.85rem; color:var(--text-secondary);">Channel: -</span>
+                                <button id="btn-close-crop-editor" class="btn-icon" title="Tutup editor"><i class='bx bx-x'></i></button>
+                            </div>
+                        </div>
+                        <p class="subtitle">Upload gambar sample untuk melihat preview crop. Seret area untuk menentukan bagian yang AKAN DIAMBIL (kotak hijau = area yang dipertahankan).</p>
+
+                        <div class="form-grid" style="margin-bottom:16px;">
+                            <div class="form-group">
+                                <label>Upload Gambar Sample (Preview Only)</label>
+                                <input type="file" id="crop-sample-image" class="form-control" accept="image/*">
+                            </div>
+                            <div class="form-group" style="display:flex; align-items:flex-end; gap:10px;">
+                                <div style="flex:1;">
+                                    <label>Aktifkan Crop untuk Channel Ini</label>
+                                    <div style="display:flex; align-items:center; gap:10px; margin-top:8px;">
+                                        <label class="switch">
+                                            <input type="checkbox" id="crop-enabled-toggle">
+                                            <span class="slider round"></span>
+                                        </label>
+                                        <span id="crop-enabled-label" style="color:var(--text-secondary); font-size:0.9rem;">Nonaktif</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Koordinat crop (persen) -->
+                        <div class="crop-coords-display">
+                            <div class="crop-coord-item">
+                                <span>X (kiri)</span>
+                                <strong id="crop-x-val">0%</strong>
+                            </div>
+                            <div class="crop-coord-item">
+                                <span>Y (atas)</span>
+                                <strong id="crop-y-val">0%</strong>
+                            </div>
+                            <div class="crop-coord-item">
+                                <span>Lebar</span>
+                                <strong id="crop-w-val">100%</strong>
+                            </div>
+                            <div class="crop-coord-item">
+                                <span>Tinggi</span>
+                                <strong id="crop-h-val">100%</strong>
+                            </div>
+                            <button id="btn-reset-crop" class="btn-ghost" style="margin-left:auto;"><i class='bx bx-reset'></i> Reset</button>
+                        </div>
+
+                        <!-- Canvas area editor crop -->
+                        <div class="crop-editor-container" id="crop-editor-container">
+                            <div class="crop-editor-placeholder" id="crop-editor-placeholder">
+                                <i class='bx bx-image-add' style="font-size:3rem; opacity:0.4;"></i>
+                                <p>Upload gambar sample di atas untuk mulai</p>
+                            </div>
+                            <div id="crop-canvas-wrapper" style="display:none; position:relative; user-select:none;">
+                                <img id="crop-preview-image" src="" alt="Sample" style="display:block; max-width:100%; border-radius:8px;">
+                                <!-- Overlay gelap di luar area crop -->
+                                <div id="crop-overlay-top"    class="crop-overlay"></div>
+                                <div id="crop-overlay-bottom" class="crop-overlay"></div>
+                                <div id="crop-overlay-left"   class="crop-overlay"></div>
+                                <div id="crop-overlay-right"  class="crop-overlay"></div>
+                                <!-- Handle drag area crop -->
+                                <div id="crop-selection-box" class="crop-selection-box">
+                                    <div class="crop-handle nw"></div>
+                                    <div class="crop-handle ne"></div>
+                                    <div class="crop-handle sw"></div>
+                                    <div class="crop-handle se"></div>
+                                    <div class="crop-handle n"></div>
+                                    <div class="crop-handle s"></div>
+                                    <div class="crop-handle w"></div>
+                                    <div class="crop-handle e"></div>
+                                    <div class="crop-move-hint"><i class='bx bx-move'></i></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="display:flex; gap:12px; margin-top:16px; flex-wrap:wrap;">
+                            <button class="btn-success" id="btn-save-crop"><i class='bx bx-save'></i> Simpan Crop</button>
+                            <button class="btn-danger-soft" id="btn-delete-crop-config"><i class='bx bx-trash'></i> Hapus Config</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SMART BLUR SECTION -->
+                <div id="section-blur" class="section">
+                    <div class="section-header">
+                        <h2><i class='bx bx-droplet'></i> Smart Blur Settings</h2>
+                        <button class="btn-primary" id="btn-add-blur-channel">
+                            <i class='bx bx-plus'></i> Add Channel Blur
+                        </button>
+                    </div>
+
+                    <div class="glass-card" style="margin-bottom:20px; border-left: 4px solid var(--primary-color);">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <h3 style="margin:0;"><i class='bx bx-world'></i> Global Smart Blur (Set Once for All)</h3>
+                                <p class="subtitle" style="margin-top:5px;">Settingan di sini akan otomatis dipakai oleh <b>semua channel</b> kecuali channel tersebut punya settingan sendiri.</p>
+                            </div>
+                            <button class="btn-primary" id="btn-manage-global-blur"><i class='bx bx-cog'></i> Manage Global Templates</button>
+                        </div>
+                    </div>
+
+                    <!-- ══ POWERBLUR PANEL ══════════════════════════════════════════ -->
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:24px;">
+
+                        <!-- OCR Auto-Detect Card -->
+                        <div class="glass-card powerblur-card" style="border-left:4px solid #f59e0b;">
+                            <div class="powerblur-card-header">
+                                <div style="display:flex; align-items:center; gap:10px;">
+                                    <div class="powerblur-icon" style="background:rgba(245,158,11,0.15); color:#f59e0b;"><i class='bx bx-text'></i></div>
+                                    <div>
+                                        <h4 style="margin:0; font-size:1rem;">OCR Text Detection</h4>
+                                        <p style="margin:0; font-size:0.75rem; color:var(--text-secondary);">Auto-detects &amp; blurs watermark text</p>
+                                    </div>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="ocr-enabled-toggle">
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                            <div class="powerblur-body">
+                                <div class="form-group" style="margin-bottom:12px;">
+                                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                         <label style="font-size:0.8rem; color:var(--text-secondary); margin:0;">
+                                             🔑 Blacklist Keywords <span style="opacity:0.6;">(one per line, supports /regex/)</span>
+                                         </label>
+                                         <button type="button" class="btn-ghost" id="btn-ocr-preset-trading" style="font-size:0.7rem; padding:2px 8px; background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.3); border-radius:4px; cursor:pointer;">
+                                             ⚡ +Preset TradingView &amp; WA
+                                         </button>
+                                     </div>
+                                     <textarea id="ocr-keywords" class="form-control" rows="5" placeholder="@username&#10;t.me/channel&#10;discord.gg/&#10;/t\.me\/.+/"></textarea>
+                                 </div>
+                                <div class="form-group" style="margin-bottom:12px;">
+                                    <label style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:4px; display:block;">Blur Padding (px): <strong id="ocr-padding-val">20</strong></label>
+                                    <input type="range" id="ocr-padding" min="0" max="80" value="20" class="range-input">
+                                </div>
+                                <div class="form-group" style="margin-bottom:12px;">
+                                    <label style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:4px; display:block;">Action (Jika ditemukan):</label>
+                                    <select id="ocr-action" class="form-control" style="font-size:0.85rem;">
+                                         <option value="blur">✨ Blur Halus &amp; Smooth (Feather Edge)</option>
+                                         <option value="ai-redraw">🎨 AI Background Match (Tambal Warna Seamless)</option>
+                                         <option value="lama-inpaint">🤖 AI Removal Pro (Hapus Teks via AI LaMa)</option>
+                                         <option value="pixelate">🧱 Mosaic Sensor (Pixelate Clean)</option>
+                                     </select>
+                                </div>
+                                <button class="btn-primary full-width" id="btn-save-ocr" style="background:linear-gradient(135deg,#d97706,#f59e0b);">
+                                    <i class='bx bx-save'></i> Save OCR Settings
+                                </button>
+                                <div id="ocr-status-badge" style="margin-top:8px; font-size:0.75rem; text-align:center; color:var(--text-secondary);">Loading...</div>
+                            </div>
+                        </div>
+
+                        <!-- Template Matching Card -->
+                        <div class="glass-card powerblur-card" style="border-left:4px solid #8b5cf6;">
+                            <div class="powerblur-card-header">
+                                <div style="display:flex; align-items:center; gap:10px;">
+                                    <div class="powerblur-icon" style="background:rgba(139,92,246,0.15); color:#8b5cf6;"><i class='bx bx-search-alt'></i></div>
+                                    <div>
+                                        <h4 style="margin:0; font-size:1rem;">Logo Template Matching</h4>
+                                        <p style="margin:0; font-size:0.75rem; color:var(--text-secondary);">Finds &amp; blurs logo by visual similarity</p>
+                                    </div>
+                                </div>
+                                <label class="switch">
+                                    <input type="checkbox" id="match-enabled-toggle">
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                            <div class="powerblur-body">
+                                <div class="form-group" style="margin-bottom:12px;">
+                                    <label style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:4px; display:block;">Match Threshold: <strong id="match-threshold-val">0.80</strong></label>
+                                    <input type="range" id="match-threshold" min="50" max="99" value="80" class="range-input" style="accent-color:#8b5cf6;">
+                                    <div style="display:flex; justify-content:space-between; font-size:0.7rem; color:var(--text-secondary); margin-top:2px;">
+                                        <span>Loose (0.50)</span><span>Strict (0.99)</span>
+                                    </div>
+                                </div>
+                                <div class="form-group" style="margin-bottom:12px;">
+                                    <label style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:4px; display:block;">Blur Strength: <strong id="match-strength-val">50</strong></label>
+                                    <input type="range" id="match-strength" min="5" max="100" value="50" class="range-input" style="accent-color:#8b5cf6;">
+                                </div>
+                                <div class="form-group" style="margin-bottom:12px;">
+                                    <label style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:6px; display:block;">📎 Upload Watermark Logo Templates</label>
+                                    <label class="btn-ghost full-width" style="cursor:pointer; text-align:center; padding:8px; border:1px dashed rgba(139,92,246,0.4);">
+                                        <i class='bx bx-upload'></i> Choose Logo Image (PNG/JPG)
+                                        <input type="file" id="match-template-upload" accept="image/png,image/jpeg,image/webp" style="display:none">
+                                    </label>
+                                </div>
+                                <div id="match-templates-list" style="display:grid; gap:6px; max-height:120px; overflow-y:auto; margin-bottom:12px;">
+                                    <!-- logo list rendered here -->
+                                </div>
+                                <div class="form-group" style="margin-bottom:12px;">
+                                    <label style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:4px; display:block;">Action (Jika ditemukan):</label>
+                                    <select id="match-action" class="form-control" style="font-size:0.85rem;">
+                                         <option value="blur">✨ Blur Halus &amp; Smooth (Feather Edge)</option>
+                                         <option value="ai-redraw">🎨 AI Background Match (Tambal Warna Seamless)</option>
+                                         <option value="lama-inpaint">🤖 AI Removal Pro (Hapus Logo via AI LaMa)</option>
+                                         <option value="pixelate">🧱 Mosaic Sensor (Pixelate Clean)</option>
+                                    </select>
+                                </div>
+                                <button class="btn-primary full-width" id="btn-save-match" style="background:linear-gradient(135deg,#7c3aed,#8b5cf6);">
+                                    <i class='bx bx-save'></i> Save Match Settings
+                                </button>
+                                <div id="match-status-badge" style="margin-top:8px; font-size:0.75rem; text-align:center; color:var(--text-secondary);">Loading...</div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- ══ END POWERBLUR PANEL ══════════════════════════════════════ -->
+
+                    <div id="blur-channel-list" class="crop-channel-list">
+                        <div class="activity-empty" id="blur-empty-msg">Belum ada blur config khusus channel. Klik "Add Channel Blur" jika ingin settingan beda per channel.</div>
+                    </div>
+
+                    <!-- Editor Visual Blur -->
+                    <div class="glass-card" id="blur-editor-card" style="margin-top:20px; display:none;">
+                        <div class="card-header">
+                            <h3><i class='bx bx-edit-alt'></i> Visual Blur Editor</h3>
+                            <div style="display:flex; gap:10px; align-items:center;">
+                                <span id="blur-editing-channel-label" style="font-size:0.85rem; color:var(--text-secondary);">Channel: -</span>
+                                <button id="btn-close-blur-editor" class="btn-icon" title="Tutup editor"><i class='bx bx-x'></i></button>
+                            </div>
+                        </div>
+                        
+                        <div class="glass-card" style="background:rgba(255,255,255,0.02); margin-bottom:20px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                                <h4 style="margin:0;"><i class='bx bx-layer'></i> Blur Templates</h4>
+                                <div style="display:flex; align-items:center; gap:15px;">
+                                    <div style="display:flex; align-items:center; gap:8px;">
+                                        <label class="switch">
+                                            <input type="checkbox" id="blur-enabled-toggle">
+                                            <span class="slider round"></span>
+                                        </label>
+                                        <span id="blur-enabled-label" style="font-size:0.85rem;">Nonaktif</span>
+                                    </div>
+                                    <button class="btn-primary btn-sm" id="btn-add-blur-template"><i class='bx bx-plus'></i> New Template</button>
+                                </div>
+                            </div>
+                            <div id="blur-templates-list" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:10px;">
+                                <!-- Template cards will appear here -->
+                            </div>
+                        </div>
+
+                        <!-- Editor UI (Hidden until a template is selected) -->
+                        <div id="blur-template-editor-area" style="display:none; border-top:1px solid rgba(255,255,255,0.1); padding-top: 20px;">
+                            <div class="form-grid" style="margin-bottom:16px; margin-top:20px;">
+                                <div class="form-group">
+                                    <label>Template Name</label>
+                                    <input type="text" id="blur-template-name" class="form-control" placeholder="e.g. Landscape / Portrait">
+                                </div>
+                                <div class="form-group">
+                                    <label>Upload Sample Image (Set Aspect Ratio)</label>
+                                    <input type="file" id="blur-sample-image" class="form-control" accept="image/*">
+                                </div>
+                            </div>
+
+                            <!-- BOX MODE SWITCHER -->
+                            <div class="powerblur-mode-switch" id="blur-mode-switcher">
+                                <button class="mode-btn active" id="mode-btn-percent" data-mode="percent">
+                                    <i class='bx bx-percentage'></i> Percentage Mode
+                                    <span class="mode-desc">Position as % of image size</span>
+                                </button>
+                                <button class="mode-btn" id="mode-btn-pixel" data-mode="pixel">
+                                    <i class='bx bx-move-horizontal'></i> Fixed Pixel Mode ⚡
+                                    <span class="mode-desc">Fixed px size, anchored to corner</span>
+                                </button>
+                            </div>
+
+                            <!-- PIXEL MODE INPUTS -->
+                            <div id="pixel-mode-inputs" style="display:none; background:rgba(59,130,246,0.07); border:1px solid rgba(59,130,246,0.2); border-radius:10px; padding:16px; margin-bottom:16px;">
+                                <p style="font-size:0.8rem; color:#60a5fa; margin-bottom:12px;"><i class='bx bx-info-circle'></i> <b>Fixed Pixel Mode:</b> Kotak blur selalu berukuran px tetap, diposisikan dari sudut yang dipilih. Tidak peduli resolusi gambar.</p>
+                                <div class="form-grid" style="grid-template-columns: repeat(4, 1fr); gap:10px; margin-bottom:10px;">
+                                    <div class="form-group">
+                                        <label style="font-size:0.75rem;">Width (px)</label>
+                                        <input type="number" id="px-width" class="form-control" value="200" min="1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size:0.75rem;">Height (px)</label>
+                                        <input type="number" id="px-height" class="form-control" value="50" min="1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size:0.75rem;">Offset X (px)</label>
+                                        <input type="number" id="px-offset-x" class="form-control" value="10" min="0">
+                                    </div>
+                                    <div class="form-group">
+                                        <label style="font-size:0.75rem;">Offset Y (px)</label>
+                                        <input type="number" id="px-offset-y" class="form-control" value="10" min="0">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label style="font-size:0.75rem;">Anchor Corner</label>
+                                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px;">
+                                        <button class="anchor-btn" data-anchor="top-left">↖ Top Left</button>
+                                        <button class="anchor-btn" data-anchor="top-right">↗ Top Right</button>
+                                        <button class="anchor-btn" data-anchor="bottom-left">↙ Bottom Left</button>
+                                        <button class="anchor-btn active-anchor" data-anchor="bottom-right">↘ Bottom Right ⭐</button>
+                                    </div>
+                                </div>
+                                <button class="btn-success" id="btn-add-pixel-box" style="margin-top:10px; width:100%;">
+                                    <i class='bx bx-plus'></i> Add Fixed Pixel Blur Box
+                                </button>
+                            </div>
+
+                            <div class="editor-toolbar">
+                                <span id="blur-template-ratio-info" style="font-size:0.8rem; color:var(--primary-color); font-weight:bold;">Ratio: 0.00</span>
+                                <p style="font-size:0.8rem; color:var(--text-secondary); flex:1; margin-left:15px;" id="blur-toolbar-hint">Klik dan seret pada gambar untuk menggambar area blur.</p>
+                                <button id="btn-blur-clear-all" class="btn-danger-soft btn-sm"><i class='bx bx-trash'></i> Clear Boxes</button>
+                            </div>
+
+                            <div class="crop-editor-container" id="blur-editor-container">
+                                <div class="crop-editor-placeholder" id="blur-editor-placeholder">
+                                    <i class='bx bx-image-add' style="font-size:3rem; opacity:0.4;"></i>
+                                    <p>Upload gambar sample untuk template ini</p>
+                                </div>
+                                <div id="blur-canvas-wrapper" style="display:none; position:relative; user-select:none;">
+                                    <img id="blur-preview-image" src="" alt="Sample" style="display:block; max-width:100%; border-radius:8px;">
+                                    <div id="blur-draw-layer" style="position:absolute; top:0; left:0; width:100%; height:100%; cursor:crosshair;"></div>
+                                </div>
+                            </div>
+
+                            <div id="blur-boxes-config-list" style="margin-top:20px; display:grid; gap:10px;">
+                                <!-- List area blur will appear here -->
+                            </div>
+
+                            <div style="display:flex; gap:12px; margin-top:20px;">
+                                <button class="btn-success" id="btn-save-blur"><i class='bx bx-check'></i> Done Editing Template</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- =================== GUIDE & TUTORIAL SECTION =================== -->
+                <div id="section-guide" class="section">
+                    <div class="section-header">
+                        <div>
+                            <h2><i class='bx bx-book-open' style="color:#a855f7;"></i> Buku Panduan & Tutorial Lengkap</h2>
+                            <p class="subtitle" style="margin-bottom:0;">Pelajari cara menggunakan semua fitur bot dengan mudah tanpa bingung.</p>
+                        </div>
+                    </div>
+
+                    <div class="guide-container">
+                        <!-- Navigation Tabs -->
+                        <div class="guide-nav">
+                            <button class="guide-nav-btn active" data-tab="guide-quickstart">
+                                <i class='bx bx-rocket'></i> 1. Panduan Mulai Cepat
+                            </button>
+                            <button class="guide-nav-btn" data-tab="guide-dc2dc">
+                                <i class='bx bxl-discord'></i> 2. Tutorial Discord ke Discord
+                            </button>
+                            <button class="guide-nav-btn" data-tab="guide-tg2dc">
+                                <i class='bx bxl-telegram'></i> 3. Tutorial Telegram ke Discord
+                            </button>
+                            <button class="guide-nav-btn" data-tab="guide-speed">
+                                <i class='bx bx-tachometer'></i> 4. Saklar AI & Mode Cepat
+                            </button>
+                            <button class="guide-nav-btn" data-tab="guide-antispam">
+                                <i class='bx bx-shield-quarter'></i> 5. Anti-Spam & Filter Kata
+                            </button>
+                            <button class="guide-nav-btn" data-tab="guide-faq">
+                                <i class='bx bx-help-circle'></i> 6. FAQ & Solusi Kendala
+                            </button>
+                        </div>
+
+                        <!-- PANE 1: Quick Start -->
+                        <div class="guide-pane active" id="pane-guide-quickstart">
+                            <div class="guide-card">
+                                <div class="guide-header">
+                                    <div class="guide-header-icon blue"><i class='bx bx-rocket'></i></div>
+                                    <div>
+                                        <h3 style="margin-bottom:4px;">Langkah Memulai dari Awal (Quick Start)</h3>
+                                        <p style="color:var(--text-secondary);font-size:0.88rem;">Ikuti 4 langkah dasar ini agar bot langsung bisa mem-forward pesan.</p>
+                                    </div>
+                                </div>
+
+                                <div class="guide-step-card">
+                                    <div class="guide-step-badge">1</div>
+                                    <div class="guide-step-content">
+                                        <h4>Dapatkan Token Akun Discord (User Token)</h4>
+                                        <p>Bot ini menggunakan akun Discord Anda sendiri untuk membaca channel (termasuk server VIP yang Anda masuki). Buka Discord di browser ➔ Tekan <code>F12</code> ➔ Tab <b>Network</b> ➔ Cari request <code>messages</code> atau <code>api</code> ➔ Salin nilai header <code>authorization</code>.</p>
+                                        <p style="margin-top:6px;color:#f59e0b;font-size:0.8rem;">⚠️ <i>Jangan berikan token ini ke siapapun! Masukkan hanya di menu <b>Bots & Tokens</b> ➔ Discord Tokens.</i></p>
+                                    </div>
+                                </div>
+
+                                <div class="guide-step-card">
+                                    <div class="guide-step-badge">2</div>
+                                    <div class="guide-step-content">
+                                        <h4>Buat Bot Telegram di @BotFather</h4>
+                                        <p>Di Telegram, cari <b>@BotFather</b> ➔ Kirim <code>/newbot</code> ➔ Beri nama bot ➔ Salin <b>Bot Token</b> yang diberikan (contoh: <code>8933930421:AAFna...</code>). Masukkan token ini ke menu <b>Bots & Tokens</b> ➔ Telegram Bots #1.</p>
+                                        <p style="margin-top:6px;font-size:0.84rem;">Masukkan bot Anda ke dalam grup Telegram tujuan Anda dan jadikan sebagai <b>Admin</b>.</p>
+                                    </div>
+                                </div>
+
+                                <div class="guide-step-card">
+                                    <div class="guide-step-badge">3</div>
+                                    <div class="guide-step-content">
+                                        <h4>Ambil ID Channel Discord Sumber & Chat ID Telegram</h4>
+                                        <p><b>Discord Channel ID:</b> Aktifkan <i>Developer Mode</i> di Settings Discord ➔ Klik kanan channel yang ingin diforward ➔ Klik <b>Copy Channel ID</b>.</p>
+                                        <p style="margin-top:6px;"><b>Telegram Chat ID:</b> Masukkan bot <b>@userinfobot</b> ke grup Telegram Anda, atau forward pesan grup ke bot tersebut untuk mengetahui Chat ID (biasanya berawalan <code>-100...</code>).</p>
+                                    </div>
+                                </div>
+
+                                <div class="guide-step-card">
+                                    <div class="guide-step-badge">4</div>
+                                    <div class="guide-step-content">
+                                        <h4>Tambahkan Mapping Channel di Dashboard</h4>
+                                        <p>Buka menu <b>Channels (DC→TG)</b> ➔ Klik <b>Add Channel</b> ➔ Masukkan Discord ID sumber, Telegram Chat ID tujuan, pilih Bot #1 ➔ Klik <b>Save Mapping</b>. Selesai! Pesan dari channel Discord tersebut akan otomatis ter-forward seketika.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- PANE 2: Discord to Discord -->
+                        <div class="guide-pane" id="pane-guide-dc2dc">
+                            <div class="guide-card">
+                                <div class="guide-header">
+                                    <div class="guide-header-icon purple"><i class='bx bxl-discord'></i></div>
+                                    <div>
+                                        <h3 style="margin-bottom:4px;">Tutorial Lengkap Discord-to-Discord (DC ➔ DC Webhook)</h3>
+                                        <p style="color:var(--text-secondary);font-size:0.88rem;">Mirror dari server Discord orang lain ke server Discord Anda sendiri tanpa bot invite.</p>
+                                    </div>
+                                </div>
+
+                                <div class="guide-step-card">
+                                    <div class="guide-step-badge">1</div>
+                                    <div class="guide-step-content">
+                                        <h4>Cara Membuat Webhook di Server Discord Tujuan</h4>
+                                        <p>1. Buka server Discord milik Anda sendiri.<br>
+                                        2. Klik ikon gerigi (Settings) pada channel tujuan ➔ Pilih menu <b>Integrations</b> ➔ Klik <b>Webhooks</b>.<br>
+                                        3. Klik <b>New Webhook</b>, beri nama sesuka Anda ➔ Klik <b>Copy Webhook URL</b>.</p>
+                                    </div>
+                                </div>
+
+                                <div class="guide-step-card">
+                                    <div class="guide-step-badge">2</div>
+                                    <div class="guide-step-content">
+                                        <h4>Whitelabeling & Branding Sendiri (Masking Profil)</h4>
+                                        <p>Jika Anda tidak ingin member Anda mengetahui nama/avatar asli pengirim di server sumber:<br>
+                                        - Isi kolom <b>Custom Bot Name</b> (misal: <code>Nexus VIP Signals</code>).<br>
+                                        - Isi kolom <b>Custom Avatar URL</b> dengan link gambar logo Anda.<br>
+                                        Semua pesan yang masuk ke server tujuan akan otomatis memakai nama dan logo brand Anda!</p>
+                                    </div>
+                                </div>
+
+                                <div class="guide-step-card">
+                                    <div class="guide-step-badge">3</div>
+                                    <div class="guide-step-content">
+                                        <h4>Memasang Auto-Ping / Mention Role di Server Tujuan</h4>
+                                        <p>Agar member di server tujuan langsung mendapat notifikasi HP/Desktop saat sinyal baru masuk:<br>
+                                        - Masukkan <code>@everyone</code> atau <code>@here</code> pada kolom <b>Auto-Ping</b>.<br>
+                                        - Atau mention Role spesifik dengan format ID Role: <code>&lt;@&amp;123456789012345678&gt;</code>.<br>
+                                        <i>(Cara dapat Role ID: Buka Server Settings ➔ Roles ➔ Klik titik tiga di role VIP ➔ Copy Role ID).</i></p>
+                                    </div>
+                                </div>
+
+                                <div class="guide-step-card">
+                                    <div class="guide-step-badge">4</div>
+                                    <div class="guide-step-content">
+                                        <h4>Forward ke Thread atau Forum Discord Spesifik</h4>
+                                        <p>Jika channel tujuan Anda berupa Forum atau Thread, Anda cukup menyalin ID thread tersebut dan menempelkannya di kolom <b>Discord Thread / Forum ID</b>. Webhook akan otomatis mengirim pesan langsung ke dalam sub-thread tersebut.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- PANE 3: Telegram to Discord -->
+                        <div class="guide-pane" id="pane-guide-tg2dc">
+                            <div class="guide-card">
+                                <div class="guide-header">
+                                    <div class="guide-header-icon emerald"><i class='bx bxl-telegram'></i></div>
+                                    <div>
+                                        <h3 style="margin-bottom:4px;">Tutorial Telegram ke Discord (TG ➔ DC Mirror)</h3>
+                                        <p style="color:var(--text-secondary);font-size:0.88rem;">Mirror dari grup/channel Telegram sumber ke server Discord via Webhook.</p>
+                                    </div>
+                                </div>
+
+                                <div class="guide-step-card">
+                                    <div class="guide-step-badge">1</div>
+                                    <div class="guide-step-content">
+                                        <h4>Dapatkan API ID & API Hash</h4>
+                                        <p>1. Buka situs resmi Telegram: <b>my.telegram.org</b>.<br>
+                                        2. Login dengan nomor HP Telegram Anda ➔ Pilih menu <b>API development tools</b>.<br>
+                                        3. Buat nama aplikasi bebas, lalu salin <code>App api_id</code> (angka) dan <code>App api_hash</code> (string huruf-angka).</p>
+                                    </div>
+                                </div>
+
+                                <div class="guide-step-card">
+                                    <div class="guide-step-badge">2</div>
+                                    <div class="guide-step-content">
+                                        <h4>Generate Session Userbot</h4>
+                                        <p>Buka terminal di folder bot, lalu jalankan perintah:</p>
+                                        <div class="copy-box">
+                                            <span>node generate-tg-session.js</span>
+                                            <button class="btn-copy-code" data-copy="node generate-tg-session.js">Salin</button>
+                                        </div>
+                                        <p style="margin-top:8px;">Ikuti petunjuk di terminal (masukkan nomor HP & kode OTP Telegram). Anda akan mendapatkan Session String panjang. Simpan di menu <b>Bots & Tokens</b> ➔ Telegram Userbot.</p>
+                                    </div>
+                                </div>
+
+                                <div class="guide-step-card">
+                                    <div class="guide-step-badge">3</div>
+                                    <div class="guide-step-content">
+                                        <h4>Hubungkan Mapping di Menu Channels (TG→DC)</h4>
+                                        <p>Buka menu <b>Channels (TG→DC)</b> ➔ Klik <b>Add TG→DC Mapping</b> ➔ Masukkan Telegram Chat ID sumber dan Webhook URL Discord tujuan ➔ Simpan.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- PANE 4: Speed & AI Scan -->
+                        <div class="guide-pane" id="pane-guide-speed">
+                            <div class="guide-card">
+                                <div class="guide-header">
+                                    <div class="guide-header-icon amber"><i class='bx bx-tachometer'></i></div>
+                                    <div>
+                                        <h3 style="margin-bottom:4px;">Panduan Saklar AI Watermark & Kecepatan Forward</h3>
+                                        <p style="color:var(--text-secondary);font-size:0.88rem;">Kendalikan kecepatan bot antara forward instan kilat atau pembersihan watermark gambar.</p>
+                                    </div>
+                                </div>
+
+                                <div class="guide-step-card">
+                                    <div class="guide-step-badge">⚡</div>
+                                    <div class="guide-step-content">
+                                        <h4>Mode Cepat (AI OFF) — Direkomendasikan untuk Kecepatan Maksimal!</h4>
+                                        <p>Saat saklar AI dimatikan (<b>AI SCAN: OFF</b>), bot <b>tidak melakukan scan OCR teks dan inpainting LaMa</b>. Gambar langsung diforward secara instan dalam <b>1–3 detik</b> saja.<br>
+                                        <b>Cara Mengaktifkan:</b> Klik tombol pill di topbar pojok kanan atas hingga bertuliskan <code>⚡ Mode Cepat (AI OFF)</code>, atau kirim command telegram <code>/ai off</code>.</p>
+                                    </div>
+                                </div>
+
+                                <div class="guide-step-card">
+                                    <div class="guide-step-badge">🤖</div>
+                                    <div class="guide-step-content">
+                                        <h4>Mode AI Watermark Cleaner (AI ON)</h4>
+                                        <p>Saat mode ini aktif (<b>AI SCAN: ON</b>), bot akan memindai teks pada gambar chart untuk mencari username/nomor HP/watermark terlarang, kemudian menghapusnya secara mulus menggunakan model AI LaMa inpainting.<br>
+                                        <i>Catatan: Mode ini membutuhkan komputasi CPU dan memakan waktu sekitar 10-30 detik per gambar.</i></p>
+                                    </div>
+                                </div>
+
+                                <div class="guide-step-card">
+                                    <div class="guide-step-badge">✂️</div>
+                                    <div class="guide-step-content">
+                                        <h4>Alternatif: Gunakan Crop Settings atau Smart Blur Manual</h4>
+                                        <p>Jika ingin menghapus watermark tapi ingin tetap super cepat, gunakan menu <b>Crop Settings</b> (memotong border atas/bawah secara instan) atau <b>Smart Blur</b> dengan kotak template tetap. Proses ini berlangsung dalam hitungan milidetik tanpa AI scanner!</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- PANE 5: Anti-Spam & Filters -->
+                        <div class="guide-pane" id="pane-guide-antispam">
+                            <div class="guide-card">
+                                <div class="guide-header">
+                                    <div class="guide-header-icon rose"><i class='bx bx-shield-quarter'></i></div>
+                                    <div>
+                                        <h3 style="margin-bottom:4px;">Panduan Anti-Spam GODMODE & Filter Kata</h3>
+                                        <p style="color:var(--text-secondary);font-size:0.88rem;">Lindungi server tujuan dari promosi liar, spammer, dan pesan bodong.</p>
+                                    </div>
+                                </div>
+
+                                <div class="guide-step-card">
+                                    <div class="guide-step-badge">🛡️</div>
+                                    <div class="guide-step-content">
+                                        <h4>Anti-Spam GODMODE 4 Layer</h4>
+                                        <p>Bot dilengkapi 4 lapisan keamanan otomatis:<br>
+                                        - <b>Layer 1 (Blacklist Words):</b> Hapus pesan jika mengandung kata bodong, scam, dll.<br>
+                                        - <b>Layer 2 (Rate Limiter):</b> Cegah serangan flood/bom gambar spam.<br>
+                                        - <b>Layer 3 (Regex Pattern):</b> Deteksi nomor WA, link invite discord liar, promo link.<br>
+                                        - <b>Layer 4 (Image Hash DB):</b> Mengingat sidik jari visual gambar spam dan memblokir gambar serupa seketika.</p>
+                                    </div>
+                                </div>
+
+                                <div class="guide-step-card">
+                                    <div class="guide-step-badge">✂️</div>
+                                    <div class="guide-step-content">
+                                        <h4>Filter Kata Parsial (Menu Filter Kata)</h4>
+                                        <p>Berbeda dengan Blacklist yang menghapus seluruh pesan, <b>Filter Kata Parsial</b> hanya menghapus kata terlarang saja, sementara sisa pesan tetap diteruskan dengan rapi ke server tujuan.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- PANE 6: FAQ & Solutions -->
+                        <div class="guide-pane" id="pane-guide-faq">
+                            <div class="guide-card">
+                                <div class="guide-header">
+                                    <div class="guide-header-icon blue"><i class='bx bx-help-circle'></i></div>
+                                    <div>
+                                        <h3 style="margin-bottom:4px;">Tanya Jawab & Solusi Kendala Populer (FAQ)</h3>
+                                        <p style="color:var(--text-secondary);font-size:0.88rem;">Pertanyaan yang sering ditanyakan beserta solusinya.</p>
+                                    </div>
+                                </div>
+
+                                <div class="faq-item">
+                                    <div class="faq-question">
+                                        <span>Kenapa gambar forward terasa lama sampainya?</span>
+                                        <i class='bx bx-chevron-down'></i>
+                                    </div>
+                                    <div class="faq-answer">
+                                        Penyebabnya adalah fitur AI Watermark Scanner yang memindai gambar menggunakan CPU. Untuk forward super instan (1-3 detik), klik tombol di topbar <b>⚡ Mode Cepat (AI OFF)</b> atau kirim <code>/ai off</code> di Telegram.
+                                    </div>
+                                </div>
+
+                                <div class="faq-item">
+                                    <div class="faq-question">
+                                        <span>Bagaimana cara agar mention Role di Discord Webhook benar-benar berbunyi?</span>
+                                        <i class='bx bx-chevron-down'></i>
+                                    </div>
+                                    <div class="faq-answer">
+                                        Isi kolom <b>Auto-Ping</b> di channel mapping dengan <code>@everyone</code>, <code>@here</code>, atau format ID Role <code>&lt;@&amp;ID_ROLE_ANDA&gt;</code>. Bot sudah dilengkapi parameter <code>allowed_mentions</code> sehingga Discord akan mengizinkan webhook memicu notifikasi suara/popup ke seluruh member role tersebut.
+                                    </div>
+                                </div>
+
+                                <div class="faq-item">
+                                    <div class="faq-question">
+                                        <span>Apakah bot bisa forward ke Discord dan Telegram sekaligus bersamaan?</span>
+                                        <i class='bx bx-chevron-down'></i>
+                                    </div>
+                                    <div class="faq-answer">
+                                        Bisa! Saat menambahkan Channel Mapping di menu <b>Channels (DC→TG)</b>, cukup isi <b>Telegram Chat ID</b> DAN <b>Discord Webhook URL</b> secara bersamaan. Bot akan mengirimkan pesan ke kedua platform secara paralel tanpa saling memperlambat.
+                                    </div>
+                                </div>
+
+                                <div class="faq-item">
+                                    <div class="faq-question">
+                                        <span>Bagaimana jika pesan di server sumber diedit atau dihapus?</span>
+                                        <i class='bx bx-chevron-down'></i>
+                                    </div>
+                                    <div class="faq-answer">
+                                        Bot memiliki fitur <b>Edit Sync</b> dan <b>Delete Sync</b>. Jika pengirim asli di server sumber mengedit atau menghapus pesannya, bot akan otomatis mengedit dan menghapus pesan yang sama di Telegram maupun di Discord tujuan Anda secara real-time.
+                                    </div>
+                                </div>
+
+                                <div class="faq-item">
+                                    <div class="faq-question">
+                                        <span>Bagaimana jika link Ngrok expired atau berganti?</span>
+                                        <i class='bx bx-chevron-down'></i>
+                                    </div>
+                                    <div class="faq-answer">
+                                        Anda dapat menggunakan static domain gratis dari dashboard ngrok.com (misalnya <code>doorway-suffice-washboard.ngrok-free.dev</code>) dan memasukkannya ke variabel <code>NGROK_DOMAIN</code> di file <code>.env</code>. Dengan begitu link dashboard tidak akan pernah berubah.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+        </section>
+    </div>
+
+    <!-- =================== MODALS =================== -->
+
+    <!-- Add Channel Modal -->
+    <div id="modal-channel" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-channel-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-channel-title">Add New Mapping</h2>
+                <span class="close-modal" data-modal="modal-channel">&times;</span>
+            </div>
+            <form id="form-channel">
+                <div class="modal-body">
+                    <!-- Row 1: Alias & Discord Channel ID -->
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="ch-name">Channel Name (Alias) <span class="req-star">*</span></label>
+                            <input type="text" id="ch-name" class="form-control" required placeholder="e.g. VIP Signals">
+                            <div class="form-hint"><i class='bx bx-info-circle'></i> Nama alias untuk identifikasi.</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="ch-discordId">Discord Channel ID <span class="req-star">*</span></label>
+                            <input type="text" id="ch-discordId" class="form-control" required placeholder="e.g. 123456789012345678">
+                            <div class="form-hint"><i class='bx bx-info-circle'></i> Klik kanan channel ➔ <b>Copy Channel ID</b>.</div>
+                        </div>
+                    </div>
+
+                    <!-- Row 2: Telegram Chat ID & Bot Key -->
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="ch-tgChatId">Telegram Chat ID <span class="opt-tag">(Opsional jika DC→DC)</span></label>
+                            <input type="text" id="ch-tgChatId" class="form-control" placeholder="e.g. -1001234567890">
+                            <div class="form-hint"><i class='bx bx-info-circle'></i> ID Telegram (diawali <code>-100...</code>).</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="ch-botKey">Bot Number (Bot Key)</label>
+                            <input type="number" id="ch-botKey" class="form-control" min="1" value="1">
+                            <div class="form-hint"><i class='bx bx-info-circle'></i> Nomor bot Telegram (1 = TELEGRAM_BOT_1).</div>
+                        </div>
+                    </div>
+
+                    <!-- Row 3: Telegram Topic ID & Discord Webhook URL -->
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="ch-threadId">Telegram Topic ID <span class="opt-tag">(Opsional)</span></label>
+                            <input type="number" id="ch-threadId" class="form-control" placeholder="e.g. 94">
+                            <div class="form-hint"><i class='bx bx-info-circle'></i> Khusus Forum/Topik Telegram. Kosongkan jika biasa.</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="ch-dcWebhookUrl">Discord Webhook URL <span class="opt-tag">(Untuk DC→DC)</span></label>
+                            <input type="url" id="ch-dcWebhookUrl" class="form-control" placeholder="https://discord.com/api/webhooks/...">
+                            <div class="form-hint"><i class='bx bx-info-circle'></i> Webhook server Discord tujuan.</div>
+                        </div>
+                    </div>
+
+                    <!-- Row 4: Collapsible DC to DC Advanced Settings -->
+                    <details class="dc-advanced-collapse" id="dc-advanced-details">
+                        <summary class="dc-collapse-summary">
+                            <span style="display:flex; align-items:center; gap:8px;">
+                                <i class='bx bxl-discord' style="color:#5865F2; font-size:1.15rem;"></i> DC ➔ DC Advanced Settings (Whitelabel & Filter)
+                            </span>
+                            <i class='bx bx-chevron-down toggle-icon'></i>
+                        </summary>
+                        <div class="dc-collapse-content">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="ch-dcThreadId">Discord Thread / Forum ID</label>
+                                    <input type="text" id="ch-dcThreadId" class="form-control" placeholder="e.g. 1234567890">
+                                    <div class="form-hint"><i class='bx bx-info-circle'></i> Isi jika ingin meneruskan ke Thread/Forum Discord.</div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="ch-dcAutoPing">Auto-Ping (Mention Role)</label>
+                                    <input type="text" id="ch-dcAutoPing" class="form-control" placeholder="e.g. @everyone / <@&ROLE_ID>">
+                                    <div class="form-hint"><i class='bx bx-info-circle'></i> Notifikasi otomatis (misal <code>@everyone</code>).</div>
+                                </div>
+                            </div>
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="ch-dcCustomUsername">Custom Bot Name (Whitelabel)</label>
+                                    <input type="text" id="ch-dcCustomUsername" class="form-control" placeholder="e.g. VIP Signals Bot">
+                                    <div class="form-hint"><i class='bx bx-info-circle'></i> Nama bot tujuan yang tampil ke member Anda.</div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="ch-dcCustomAvatarUrl">Custom Avatar URL</label>
+                                    <input type="url" id="ch-dcCustomAvatarUrl" class="form-control" placeholder="https://domain.com/logo.png">
+                                    <div class="form-hint"><i class='bx bx-info-circle'></i> URL foto avatar/logo bot tujuan Anda.</div>
+                                </div>
+                            </div>
+                            <div class="dc-filter-checkboxes">
+                                <label class="dc-check-label">
+                                    <input type="checkbox" id="ch-dcOnlyWithMedia">
+                                    <span>Hanya teruskan jika ada Gambar / Media</span>
+                                </label>
+                                <label class="dc-check-label">
+                                    <input type="checkbox" id="ch-dcStripInvites" checked>
+                                    <span>Hapus Link Invite Discord sumber</span>
+                                </label>
+                            </div>
+                        </div>
+                    </details>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-ghost close-modal" data-modal="modal-channel" style="margin-right:auto;">Cancel</button>
+                    <button type="submit" class="btn-primary"><i class='bx bx-check'></i> Save Mapping</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add TG2DC Modal -->
+    <div id="modal-tg2dc" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-tg2dc-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-tg2dc-title">Add TG→DC Mapping</h2>
+                <span class="close-modal" data-modal="modal-tg2dc">&times;</span>
+            </div>
+            <form id="form-tg2dc">
+                <div class="modal-body">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Mapping Name (Alias)</label>
+                            <input type="text" id="tg2dc-name" class="form-control" required placeholder="e.g. Crypto Signals">
+                        </div>
+                        <div class="form-group">
+                            <label>Telegram Chat ID</label>
+                            <input type="text" id="tg2dc-tgChatId" class="form-control" required placeholder="e.g. -1001234567890">
+                        </div>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Telegram Topic ID (Optional)</label>
+                            <input type="number" id="tg2dc-tgThreadId" class="form-control" placeholder="e.g. 10 (Leave blank for general)">
+                        </div>
+                        <div class="form-group">
+                            <label>Discord Webhook URL</label>
+                            <input type="url" id="tg2dc-dcWebhookUrl" class="form-control" required placeholder="https://discord.com/api/webhooks/...">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-ghost close-modal" data-modal="modal-tg2dc" style="margin-right:auto;">Cancel</button>
+                    <button type="submit" class="btn-primary"><i class='bx bx-check'></i> Save TG→DC Mapping</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Custom Delete Confirm Modal -->
+    <div id="modal-confirm-delete" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-delete-title">
+        <div class="modal-content modal-sm">
+            <div class="modal-body" style="text-align:center; padding: 28px 24px 20px;">
+                <div class="modal-icon danger">
+                    <i class='bx bx-trash'></i>
+                </div>
+                <h2 id="modal-delete-title" style="margin-bottom:8px;">Delete Mapping?</h2>
+                <p id="modal-delete-desc" style="color:var(--text-secondary); margin-bottom:10px; font-size:0.9rem;">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer" style="justify-content: stretch;">
+                <button id="btn-confirm-cancel" class="btn-ghost flex-1">Cancel</button>
+                <button id="btn-confirm-delete" class="btn-danger-solid flex-1"><i class='bx bx-trash'></i> Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Test Message Modal -->
+    <div id="modal-test-msg" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-test-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-test-title">Send Test Message</h2>
+                <span class="close-modal" data-modal="modal-test-msg">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p class="subtitle" style="margin-top:0; margin-bottom:12px;">Sends a test message to verify connectivity for this channel mapping.</p>
+                <div class="test-channel-info" id="test-channel-info"></div>
+                <div class="form-group" style="margin-top:14px; margin-bottom:0;">
+                    <label>Custom Test Message (Optional)</label>
+                    <input type="text" id="test-msg-text" class="form-control" placeholder="🧪 Test from Nexus Mirror Bot!">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-ghost close-modal" data-modal="modal-test-msg" style="margin-right:auto;">Cancel</button>
+                <button id="btn-send-test" class="btn-primary"><i class='bx bx-send'></i> Send Test Message</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Restart Confirm Modal -->
+    <div id="modal-confirm-restart" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-restart-title">
+        <div class="modal-content modal-sm">
+            <div class="modal-body" style="text-align:center; padding: 28px 24px 20px;">
+                <div class="modal-icon warning">
+                    <i class='bx bx-power-off'></i>
+                </div>
+                <h2 id="modal-restart-title" style="margin-bottom:8px;">Restart Bot?</h2>
+                <p style="color:var(--text-secondary); margin-bottom:10px; font-size:0.9rem;">PM2 will bring it back up automatically. All queued messages will be lost.</p>
+            </div>
+            <div class="modal-footer" style="justify-content: stretch;">
+                <button id="btn-restart-cancel" class="btn-ghost flex-1">Cancel</button>
+                <button id="btn-restart-confirm" class="btn-primary flex-1"><i class='bx bx-power-off'></i> Restart</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Add Crop Channel -->
+    <div id="modal-add-crop" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-add-crop-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-add-crop-title"><i class='bx bx-crop'></i> Add Crop Channel</h2>
+                <span class="close-modal" data-modal="modal-add-crop">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p class="subtitle" style="margin-top:0; margin-bottom:12px;">Masukkan Discord Channel ID yang ingin dikonfigurasi crop-nya.</p>
+                <div class="form-group">
+                    <label>Discord Channel ID</label>
+                    <input type="text" id="crop-new-channel-id" class="form-control" placeholder="e.g. 1234567890123456789" pattern="[0-9]+" required>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label>Nama Channel (Opsional)</label>
+                    <input type="text" id="crop-new-channel-name" class="form-control" placeholder="e.g. VIP Trading">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-ghost close-modal" data-modal="modal-add-crop" style="margin-right:auto;">Cancel</button>
+                <button id="btn-confirm-add-crop" class="btn-primary"><i class='bx bx-plus'></i> Tambah & Buka Editor</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Add Blur Channel -->
+    <div id="modal-add-blur" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-add-blur-title">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-add-blur-title"><i class='bx bx-droplet'></i> Add Blur Channel</h2>
+                <span class="close-modal" data-modal="modal-add-blur">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p class="subtitle" style="margin-top:0; margin-bottom:12px;">Masukkan Discord Channel ID yang ingin dikonfigurasi blur-nya.</p>
+                <div class="form-group">
+                    <label>Discord Channel ID</label>
+                    <input type="text" id="blur-new-channel-id" class="form-control" placeholder="e.g. 1234567890123456789" pattern="[0-9]+" required>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label>Nama Channel (Opsional)</label>
+                    <input type="text" id="blur-new-channel-name" class="form-control" placeholder="e.g. VIP Signals">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-ghost close-modal" data-modal="modal-add-blur" style="margin-right:auto;">Cancel</button>
+                <button id="btn-confirm-add-blur" class="btn-primary"><i class='bx bx-plus'></i> Tambah & Buka Editor</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== WORD FILTER SECTION ===================== -->
+    <!-- Catatan: Section ini di-inject ke .content-wrapper via JS -->
+    <template id="tpl-wordfilter-section">
+      <div id="section-wordfilter" class="section">
+
+        <!-- Header -->
+        <div class="section-header">
+          <h2><i class='bx bx-shield-x'></i> Filter Kata Terlarang</h2>
+          <div style="display:flex;gap:12px;align-items:center;">
+            <label class="switch" title="Aktifkan/Nonaktifkan filter">
+              <input type="checkbox" id="wf-enabled">
+              <span class="slider round"></span>
+            </label>
+            <span id="wf-enabled-label" style="font-size:0.9rem;color:var(--text-secondary);">Nonaktif</span>
+          </div>
+        </div>
+
+        <!-- Info Banner -->
+        <div class="glass-card" style="margin-bottom:20px;border-left:4px solid #f59e0b;">
+          <div style="display:flex;align-items:flex-start;gap:14px;">
+            <div style="background:rgba(245,158,11,0.15);color:#f59e0b;width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1.3rem;">
+              <i class='bx bx-info-circle'></i>
+            </div>
+            <div>
+              <h4 style="margin:0 0 4px;">Cara Kerja Filter Partial</h4>
+              <p class="subtitle" style="margin:0;">
+                Bot <b>tidak menghapus seluruh pesan</b>. Hanya kata/frasa yang terdeteksi sebagai terlarang yang akan dihapus, sisa pesan tetap diteruskan.
+                <br><b>Contoh:</b> Kata terlarang: <code>AKU CINTA</code> &nbsp;|&nbsp;
+                Input: <code>AKU SENDIRIAN AKU CINTA KALIAN</code> &nbsp;→&nbsp;
+                Output: <code>AKU SENDIRIAN KALIAN</code>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stats Row -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:16px;margin-bottom:24px;">
+          <div class="glass-card" style="text-align:center;padding:18px 12px;">
+            <div style="font-size:2rem;font-weight:700;color:var(--primary-color);" id="wf-stat-total">0</div>
+            <div class="subtitle" style="margin:4px 0 0;">Total Kata</div>
+          </div>
+          <div class="glass-card" style="text-align:center;padding:18px 12px;">
+            <div style="font-size:2rem;font-weight:700;color:#10b981;" id="wf-stat-status">OFF</div>
+            <div class="subtitle" style="margin:4px 0 0;">Status Filter</div>
+          </div>
+          <div class="glass-card" style="text-align:center;padding:18px 12px;">
+            <div style="font-size:2rem;font-weight:700;color:#f59e0b;" id="wf-stat-filtered">0</div>
+            <div class="subtitle" style="margin:4px 0 0;">Pesan Difilter</div>
+          </div>
+        </div>
+
+        <!-- Main Two-Column Layout -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+
+          <!-- Kiri: Manajemen Kata -->
+          <div class="glass-card">
+            <div class="card-header">
+              <h3><i class='bx bx-list-ul'></i> Daftar Kata Terlarang</h3>
+              <span id="wf-word-count" style="font-size:0.8rem;color:var(--text-secondary);background:rgba(59,130,246,0.1);padding:3px 10px;border-radius:20px;">0 kata</span>
+            </div>
+
+            <!-- Input tambah kata -->
+            <div style="display:flex;gap:8px;margin-bottom:16px;">
+              <input type="text" id="wf-input" class="form-control" placeholder="Ketik kata atau frasa terlarang..." style="flex:1;">
+              <button id="wf-btn-add" class="btn-primary" style="white-space:nowrap;" title="Tambah kata">
+                <i class='bx bx-plus'></i> Tambah
+              </button>
+            </div>
+
+            <!-- Import bulk -->
+            <div style="margin-bottom:16px;">
+              <textarea id="wf-bulk-input" class="form-control" rows="3" placeholder="Import banyak sekaligus: satu kata/frasa per baris, lalu klik Import"></textarea>
+              <div style="display:flex;gap:8px;margin-top:8px;">
+                <button id="wf-btn-bulk" class="btn-ghost" style="flex:1;"><i class='bx bx-upload'></i> Import Bulk</button>
+                <button id="wf-btn-clear-all" class="btn-danger-soft" style="flex:1;"><i class='bx bx-trash'></i> Hapus Semua</button>
+              </div>
+            </div>
+
+            <!-- Daftar kata -->
+            <div id="wf-words-list" style="max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;">
+              <div class="activity-empty">Belum ada kata terlarang. Tambahkan di atas.</div>
+            </div>
+          </div>
+
+          <!-- Kanan: Test Simulator -->
+          <div style="display:flex;flex-direction:column;gap:16px;">
+
+            <!-- Test Panel -->
+            <div class="glass-card" style="border-left:4px solid #8b5cf6;">
+              <div class="card-header">
+                <h3><i class='bx bx-test-tube'></i> Simulator Filter</h3>
+                <span style="font-size:0.75rem;color:var(--text-secondary);">Coba sebelum pakai</span>
+              </div>
+              <p class="subtitle">Masukkan pesan contoh untuk melihat hasil setelah difilter secara real-time.</p>
+              <div class="form-group">
+                <label>Pesan Input</label>
+                <textarea id="wf-test-input" class="form-control" rows="4" placeholder="Contoh: AKU SENDIRIAN AKU CINTA KALIAN SEMUA"></textarea>
+              </div>
+              <button id="wf-btn-test" class="btn-primary full-width" style="background:linear-gradient(135deg,#7c3aed,#8b5cf6);margin-bottom:14px;">
+                <i class='bx bx-play'></i> Jalankan Test
+              </button>
+
+              <!-- Hasil Test -->
+              <div id="wf-test-result" style="display:none;">
+                <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:14px;">
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                    <div id="wf-test-icon" style="width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.9rem;"></div>
+                    <strong id="wf-test-summary"></strong>
+                  </div>
+                  <div style="margin-bottom:8px;">
+                    <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:3px;">✂️ Kata dihapus:</div>
+                    <div id="wf-test-removed" style="font-size:0.85rem;"></div>
+                  </div>
+                  <div>
+                    <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:3px;">✅ Hasil pesan:</div>
+                    <div id="wf-test-output" style="font-size:0.9rem;font-weight:500;padding:8px 10px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:8px;"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tips Card -->
+            <div class="glass-card" style="background:rgba(59,130,246,0.04);border:1px solid rgba(59,130,246,0.15);">
+              <h4 style="margin:0 0 10px;"><i class='bx bx-bulb' style="color:#f59e0b;"></i> Tips Penggunaan</h4>
+              <ul style="margin:0;padding-left:18px;color:var(--text-secondary);font-size:0.85rem;line-height:1.7;">
+                <li>Mendukung <b>frasa</b> (lebih dari satu kata)</li>
+                <li>Filter bersifat <b>case-insensitive</b> (tidak peduli huruf besar/kecil)</li>
+                <li>Frasa yang lebih panjang akan diproses lebih dulu</li>
+                <li>Pesan yang tersisa tetap <b>diteruskan</b> ke Telegram</li>
+                <li>Jika setelah filter pesan kosong & tidak ada media, pesan dilewati</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- Save Settings Bar -->
+        <div style="display:flex;justify-content:flex-end;margin-top:20px;gap:12px;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="wf-log-filtered" style="width:16px;height:16px;">
+            <span>Log pesan yang difilter di Activity</span>
+          </label>
+          <button id="wf-btn-save-settings" class="btn-success">
+            <i class='bx bx-save'></i> Simpan Pengaturan
+          </button>
+        </div>
+
+      </div>
+    </template>
+
+    <!-- ANTI-SPAM GODMODE SECTION -->
+    <template id="tpl-antispam">
+      <div id="section-antispam" class="section">
+        <div class="section-header" style="margin-bottom:24px;">
+          <h2 style="font-size:22px;font-weight:700;display:flex;align-items:center;gap:10px;">
+            <i class='bx bx-shield-quarter' style="color:#ef4444;font-size:28px;"></i>
+            Anti-Spam GODMODE
+          </h2>
+          <p style="color:var(--text-muted);margin-top:4px;">Konfigurasi sistem pertahanan spam berlapis. Perubahan langsung tersimpan ke .env.</p>
+        </div>
+
+        <!-- STATUS STRIP -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:28px;" id="as-status-strip">
+          <div class="box" style="padding:18px 20px;">
+            <div class="box-topic" style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);">Image Hash DB</div>
+            <div class="number" id="as-hash-count" style="font-size:28px;font-weight:700;color:#ef4444;">0</div>
+            <div style="font-size:12px;color:var(--text-muted);">sidik jari spam tersimpan</div>
+          </div>
+          <div class="box" style="padding:18px 20px;">
+            <div class="box-topic" style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);">Rate Limit</div>
+            <div class="number" id="as-rate-display" style="font-size:28px;font-weight:700;color:#f59e0b;">10</div>
+            <div style="font-size:12px;color:var(--text-muted);">gambar / 30 detik</div>
+          </div>
+          <div class="box" style="padding:18px 20px;">
+            <div class="box-topic" style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);">Blacklist Kata</div>
+            <div class="number" id="as-bl-count" style="font-size:28px;font-weight:700;color:#8b5cf6;">0</div>
+            <div style="font-size:12px;color:var(--text-muted);">kata/frasa terblokir</div>
+          </div>
+        </div>
+
+        <!-- FLOW DIAGRAM -->
+        <div class="card" style="margin-bottom:24px;padding:20px 24px;">
+          <h3 style="font-size:14px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:16px;">Alur Pertahanan</h3>
+          <div style="display:flex;flex-direction:column;gap:0;" id="as-flow">
+            <div class="as-layer" data-layer="1" style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);margin-bottom:6px;">
+              <span style="font-size:22px;">⚡</span>
+              <div style="flex:1">
+                <b>LAYER 1 — Rate Limiter (Anti Flood)</b>
+                <div style="font-size:13px;color:var(--text-muted);">Kirim &gt;<span id="as-flow-limit">10</span> gambar dalam <span id="as-flow-window">30</span>s → Hapus pesan + Alert admin</div>
+              </div>
+              <span class="badge badge-active" id="as-l1-badge">AKTIF</span>
+            </div>
+            <div style="width:2px;height:12px;background:rgba(239,68,68,.3);margin:0 28px;"></div>
+            <div class="as-layer" data-layer="2" style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);margin-bottom:6px;">
+              <span style="font-size:22px;">🔒</span>
+              <div style="flex:1">
+                <b>LAYER 2 — Blacklist Kata</b>
+                <div style="font-size:13px;color:var(--text-muted);">Teks/embed mengandung kata blacklist → Hapus pesan + Alert</div>
+              </div>
+              <span class="badge badge-active" id="as-l2-badge">AKTIF</span>
+            </div>
+            <div style="width:2px;height:12px;background:rgba(99,102,241,.3);margin:0 28px;"></div>
+            <div class="as-layer" data-layer="3" style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);margin-bottom:6px;">
+              <span style="font-size:22px;">🔍</span>
+              <div style="flex:1">
+                <b>LAYER 3 — Regex Pattern Detector</b>
+                <div style="font-size:13px;color:var(--text-muted);">Nomor HP, link Discord/TG, kalimat promo, klaim bodong</div>
+              </div>
+              <span class="badge" id="as-l3-badge">AKTIF</span>
+            </div>
+            <div style="width:2px;height:12px;background:rgba(245,158,11,.3);margin:0 28px;"></div>
+            <div class="as-layer" data-layer="4" style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:10px;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);">
+              <span style="font-size:22px;">🖼️</span>
+              <div style="flex:1">
+                <b>LAYER 4 — OCR + Image Hash</b>
+                <div style="font-size:13px;color:var(--text-muted);">Hash visual gambar mirip spam → hapus instan. OCR scan teks di gambar.</div>
+              </div>
+              <span class="badge badge-active" id="as-l4-badge">AKTIF</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;">
+
+          <!-- BLACKLIST WORDS -->
+          <div class="card" style="padding:20px 22px;">
+            <h3 style="font-size:15px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;">
+              <i class='bx bx-block' style="color:#8b5cf6;"></i> Kata Blacklist
+            </h3>
+            <div style="display:flex;gap:8px;margin-bottom:12px;">
+              <input type="text" id="as-bl-input" class="form-control" placeholder="Tambah kata/frasa baru..." style="flex:1;">
+              <button class="btn-primary" id="as-bl-add" style="padding:8px 14px;white-space:nowrap;"><i class='bx bx-plus'></i> Tambah</button>
+            </div>
+            <div id="as-bl-list" style="display:flex;flex-wrap:wrap;gap:8px;min-height:48px;margin-bottom:12px;"></div>
+            
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;border-top:1px solid var(--border-color);padding-top:12px;">
+                <div style="display:flex;flex-direction:column;">
+                    <span style="font-size:13px;font-weight:600;">Hapus Pesan Otomatis</span>
+                    <span style="font-size:11px;color:var(--text-muted);">Hapus pesan jika mengandung blacklist</span>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="as-bl-autodelete" checked>
+                    <span class="slider round"></span>
+                </label>
+            </div>
+          </div>
+
+          <!-- RATE LIMITER -->
+          <div class="card" style="padding:20px 22px;">
+            <h3 style="font-size:15px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;">
+              <i class='bx bx-timer' style="color:#ef4444;"></i> Rate Limiter (Anti Flood)
+            </h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div>
+                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">Max gambar per window</label>
+                <input type="number" id="as-rate-limit" class="form-control" min="1" max="100" value="10">
+              </div>
+              <div>
+                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">Window (detik)</label>
+                <input type="number" id="as-rate-window" class="form-control" min="5" max="300" value="30">
+              </div>
+            </div>
+            <p style="font-size:12px;color:var(--text-muted);margin-top:10px;">
+              Jika 1 user kirim lebih dari <b id="as-rl-preview">10</b> gambar dalam <b id="as-rl-win-preview">30</b> detik → pesannya dihapus
+            </p>
+          </div>
+
+        </div>
+
+        <!-- REGEX PATTERNS -->
+        <div class="card" style="padding:20px 22px;margin-bottom:20px;">
+          <h3 style="font-size:15px;font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px;">
+            <i class='bx bx-search-alt' style="color:#f59e0b;"></i> Regex Pattern Detector
+          </h3>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;" id="as-patterns-grid">
+            <!-- Filled by JS -->
+          </div>
+
+          <!-- Test Panel -->
+          <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border-color);">
+            <div style="display:flex;gap:8px;">
+              <input type="text" id="as-test-input" class="form-control" placeholder="Ketik teks untuk test pattern (contoh: wa 089 777 54040)...">
+              <button class="btn-primary" id="as-test-btn" style="padding:8px 14px;white-space:nowrap;"><i class='bx bx-search'></i> Test</button>
+            </div>
+            <div id="as-test-result" style="margin-top:10px;padding:10px 14px;border-radius:8px;display:none;"></div>
+          </div>
+        </div>
+
+        <!-- IMAGE HASH DB -->
+        <div class="card" style="padding:20px 22px;margin-bottom:20px;">
+          <h3 style="font-size:15px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:8px;">
+            <i class='bx bx-fingerprint' style="color:#10b981;"></i> Image Hash Database
+            <span style="font-size:12px;font-weight:400;color:var(--text-muted);margin-left:auto;">Sidik jari visual gambar spam</span>
+          </h3>
+          <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">
+            Bot otomatis mempelajari gambar spam yang ditemukan dan menyimpan "sidik jari visual"-nya. 
+            Saat ada gambar baru, hash-nya dibandingkan — gambar yang <b>mirip secara visual</b> langsung dihapus tanpa OCR.
+          </p>
+          <div style="display:flex;align-items:center;gap:16px;">
+            <div style="flex:1;padding:12px 16px;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:8px;text-align:center;">
+              <div style="font-size:28px;font-weight:700;color:#10b981;" id="as-hash-count2">0</div>
+              <div style="font-size:12px;color:var(--text-muted);">hash tersimpan</div>
+            </div>
+            <div style="flex:1;">
+              <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">Threshold kemiripan (bit berbeda, 0-64)</label>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <input type="range" id="as-hash-threshold" min="1" max="30" value="10" style="flex:1;">
+                <span id="as-threshold-val" style="font-weight:600;min-width:32px;text-align:center;">10</span>
+              </div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Makin kecil = makin ketat (hanya gambar sangat mirip)</div>
+            </div>
+            <div style="flex:1;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 16px;border:1px solid var(--border-color);border-radius:8px;">
+                <div style="display:flex;flex-direction:column;">
+                    <span style="font-size:13px;font-weight:600;">Hapus Pesan Otomatis</span>
+                    <span style="font-size:11px;color:var(--text-muted);">Hapus jika hash cocok</span>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="as-hash-autodelete" checked>
+                    <span class="slider round"></span>
+                </label>
+            </div>
+            <button id="as-hash-reset" class="btn-danger" style="padding:8px 14px;white-space:nowrap;align-self:stretch;">
+              <i class='bx bx-trash'></i> Reset DB
+            </button>
+          </div>
+        </div>
+
+        <!-- SAVE BUTTON -->
+        <div style="display:flex;justify-content:flex-end;gap:12px;">
+          <button id="as-btn-reload" class="btn-icon-text">
+            <i class='bx bx-refresh'></i> <span>Reload</span>
+          </button>
+          <button id="as-btn-save" class="btn-success" style="padding:10px 24px;">
+            <i class='bx bx-save'></i> Simpan Semua Pengaturan
+          </button>
+        </div>
+      </div>
+    </template>
+
+    <script src="script.js?v=5"></script>
+</body>
+</html>

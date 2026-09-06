@@ -1,0 +1,22 @@
+{
+  "GLOBAL": {
+    "enabled": false,
+    "templates": [
+      {
+        "id": 1783705585471,
+        "name": "1",
+        "aspectRatio": 1.1392857142857142,
+        "boxes": [
+          {
+            "x": 0.15674,
+            "y": 0.742188,
+            "w": 99.8433,
+            "h": 99.2578,
+            "anchor": "top-left",
+            "action": "scan-ocr"
+          }
+        ]
+      }
+    ]
+  }
+}
