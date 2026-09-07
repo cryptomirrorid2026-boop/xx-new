@@ -683,7 +683,10 @@ function startWebServer(tgManager, channelMap, port = 3000, tg2dcStore = null) {
   app.post('/api/restart', (_, res) => {
     res.json({ success: true });
     pushEvent('warning', 'Bot restarting via dashboard...');
-    setTimeout(() => process.exit(0), 1000);
+    // Di cloud (Railway/Render), exit code 1 memicu auto-restart container (On Failure).
+    // Exit code 0 membuat Railway menganggap selesai (Completed) dan mati permanen.
+    const exitCode = (process.env.RAILWAY_ENVIRONMENT || process.env.RENDER) ? 1 : 0;
+    setTimeout(() => process.exit(exitCode), 1000);
   });
 
   // ── Fallback SPA ─────────────────────────────────────────────
