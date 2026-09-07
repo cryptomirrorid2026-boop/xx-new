@@ -44,80 +44,93 @@ logger.banner();
 memoryGuard.start();
 
 
+function cleanToken(t) {
+  if (!t || typeof t !== 'string') return '';
+  return t
+    .replace(/^["']|["']$/g, '')
+    .replace(/^(TOKEN\d*|DISCORD_TOKENS?)\s*[:=]\s*/i, '')
+    .trim();
+}
+
 // ─── Validasi .env ────────────────────────────────────────────────────────────
 function validateEnv() {
-  const hasDiscord = (process.env.DISCORD_TOKENS && !process.env.DISCORD_TOKENS.includes('ISI_'))
-    || (process.env.DISCORD_TOKEN && !process.env.DISCORD_TOKEN.includes('ISI_'));
-
-  const hasTelegram = Object.keys(process.env).some(k =>
-    k.startsWith('TELEGRAM_BOT_') && !process.env[k].includes('ISI_')
-  );
-
-  const hasMapping = process.env.CHANNEL_MAPPING && !process.env.CHANNEL_MAPPING.includes('DISCORD_CHANNEL');
-
-  if (!hasDiscord) {
-    logger.error('DISCORD_TOKENS belum diisi di .env!');
-    process.exit(1);
-  }
-  if (!hasTelegram) {
-    logger.error('TELEGRAM_BOT_1 (atau lebih) belum diisi di .env!');
-    process.exit(1);
-  }
-  if (!hasMapping) {
-    // channels.json bisa jadi sudah ada — boleh lanjut
-    logger.warn('CHANNEL_MAPPING tidak ada di .env — pastikan data/channels.json sudah terisi!');
+  const tokens = parseDiscordTokens(false);
+  if (tokens.length === 0) {
+    logger.warn('⚠️ PERINGATAN: Belum ada Discord Token valid. Masukkan DISCORD_TOKENS atau TOKEN1 di Variables.');
   }
 }
 
-validateEnv();
-
 // ─── Parse Discord Tokens ─────────────────────────────────────────────────────
-function parseDiscordTokens() {
+function parseDiscordTokens(exitOnError = false) {
   const tokens = [];
 
-  if (process.env.DISCORD_TOKENS && !process.env.DISCORD_TOKENS.includes('ISI_')) {
-    process.env.DISCORD_TOKENS
-      .split(',')
-      .map(t => t.trim())
-      .filter(Boolean)
-      .forEach(t => tokens.push(t));
+  const add = (val) => {
+    if (!val) return;
+    const cleaned = cleanToken(val);
+    if (cleaned && !cleaned.includes('ISI_') && !tokens.includes(cleaned)) {
+      tokens.push(cleaned);
+    }
+  };
+
+  // 1. DISCORD_TOKENS (koma atau baris baru)
+  if (process.env.DISCORD_TOKENS) {
+    process.env.DISCORD_TOKENS.split(/[\r\n,]+/).forEach(add);
   }
 
-  if (tokens.length === 0 && process.env.DISCORD_TOKEN && !process.env.DISCORD_TOKEN.includes('ISI_')) {
-    tokens.push(process.env.DISCORD_TOKEN.trim());
+  // 2. DISCORD_TOKEN
+  if (process.env.DISCORD_TOKEN) {
+    process.env.DISCORD_TOKEN.split(/[\r\n,]+/).forEach(add);
+  }
+
+  // 3. Support TOKEN1, TOKEN2, DISCORD_TOKEN_1, dll.
+  for (const [key, val] of Object.entries(process.env)) {
+    if (/^(TOKEN\d+|DISCORD_TOKEN_\d+)$/i.test(key)) {
+      add(val);
+    }
   }
 
   if (tokens.length === 0) {
-    logger.error('Tidak ada Discord token valid!');
-    process.exit(1);
+    logger.error('Tidak ada Discord token valid di environment variables!');
+    if (exitOnError) process.exit(1);
+  } else {
+    logger.info(`Ditemukan ${tokens.length} Discord token`);
   }
 
-  logger.info(`Ditemukan ${tokens.length} Discord token`);
   return tokens;
 }
 
 // ─── Parse Telegram Bots ──────────────────────────────────────────────────────
 function parseTelegramBots() {
-  let i = 1;
   let count = 0;
 
-  while (process.env[`TELEGRAM_BOT_${i}`]) {
-    const token = process.env[`TELEGRAM_BOT_${i}`];
-    if (token && !token.includes('ISI_')) {
-      tgManager.add(i, token);
+  const addBot = (key, token) => {
+    const cleaned = cleanToken(token);
+    if (cleaned && !cleaned.includes('ISI_')) {
+      tgManager.add(key, cleaned);
       count++;
     }
+  };
+
+  let i = 1;
+  while (process.env[`TELEGRAM_BOT_${i}`]) {
+    addBot(i, process.env[`TELEGRAM_BOT_${i}`]);
     i++;
   }
 
-  if (count === 0 && process.env.TELEGRAM_BOT_TOKEN && !process.env.TELEGRAM_BOT_TOKEN.includes('ISI_')) {
-    tgManager.add(1, process.env.TELEGRAM_BOT_TOKEN);
-    count++;
+  if (process.env.TELEGRAM_BOT_TOKEN) {
+    addBot(1, process.env.TELEGRAM_BOT_TOKEN);
   }
 
+  if (process.env.BOT_TOKEN) {
+    addBot(1, process.env.BOT_TOKEN);
+  }
+
+  // Fallback ke token default jika belum diset di Railway
   if (count === 0) {
-    logger.error('Tidak ada Telegram bot token valid!');
-    process.exit(1);
+    const fallbackTg = '8933930421:AAFna_Suk5tTtBqq5ybHrPQ8A0fgT-j_kEQ';
+    tgManager.add(1, fallbackTg);
+    count++;
+    logger.info('Menggunakan Telegram bot token default.');
   }
 
   logger.info(`Ditemukan ${count} Telegram Bot`);
