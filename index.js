@@ -243,7 +243,7 @@ registerTelegramCommands(tgManager, channelMap, config, channelStore, tg2dcStore
 
 // ─── Health Check HTTP Server / Web Dashboard ────────────────────────────────
 const ENABLE_WEB = process.env.ENABLE_WEB_SERVER !== 'false';
-const HEALTH_PORT = parseInt(process.env.HEALTH_PORT || process.env.PORT || '5000');
+const HEALTH_PORT = parseInt(process.env.PORT || process.env.HEALTH_PORT || '5000');
 if (ENABLE_WEB) {
   startWebServer(tgManager, channelMap, HEALTH_PORT, tg2dcStore);
 

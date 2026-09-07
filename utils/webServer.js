@@ -689,8 +689,8 @@ function startWebServer(tgManager, channelMap, port = 3000, tg2dcStore = null) {
   // ── Fallback SPA ─────────────────────────────────────────────
   app.use((_, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
 
-  const server = app.listen(port, () =>
-    logger.success('🌐 Dashboard & API aktif di', `http://localhost:${port}`)
+  const server = app.listen(port, '0.0.0.0', () =>
+    logger.success('🌐 Dashboard & API aktif di', `http://0.0.0.0:${port}`)
   );
 
   server.on('error', err => {
