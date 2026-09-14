@@ -1,24 +1,82 @@
-# Dependency directories
-node_modules/
+# ============================================================
+#   .gitignore - Super Aman & Anti-Tabrakan Data VPS
+# ============================================================
 
-# Environment variables & secrets (JANGAN DI-PUSH KE GITHUB)
+# ─── 1. KREDENSIAL & ENVIRONMENT (JANGAN SAMPAI BOCOR) ──────
 .env
+.env.*
+*.env
 *.env.local
+!.env.example
 
-# Logs
+# ─── 2. DATABASE & SQLITE CACHE (ANTI-TIMPA DATA VPS) ───────
+# Menjamin data pelanggan, transaksi, dan saldo nyata di VPS
+# TIDAK PERNAH tertimpa data dummy dari laptop saat git pull.
+database/*.db*
+database/*.sqlite*
+database/*.wal
+database/*.shm
+database/*.backup*
+database/*.bak
+
+data/*.db*
+data/*.sqlite*
+data/*.wal
+data/*.shm
+data/*.backup*
+data/*.bak
+data/messages.db*
+data/messageStore.json*
+
+# Pola Database & SQLite Global
+*.db
+*.db-*
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+
+# ─── 3. DEPENDENCIES & LOGS ─────────────────────────────────
+node_modules/
 logs/
+*.log
 npm-debug.log*
 yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# Database & SQLite files
-data/*.db*
-data/*.bak
-data/tunnel.json
+# ─── 4. FOLDER UPLOAD, MEDIA & BUKTI TRANSFER ───────────────
+# File upload media, avatar, template dinamis, dan bukti transfer
+uploads/
+receipts/
+bukti-transfer/
+public/uploads/
+public/downloads/
+data/uploads/
+data/avatars/
+data/source-templates/
+temp/
+tmp/
 
-# Large AI models (downloaded on demand)
+# ─── 5. RUNTIME STATE, STATS & DYNAMIC JSON STORES ──────────
+# File-file ini berubah otomatis saat bot berjalan di VPS
+# Mengabaikannya mencegah merge conflict dan melindungi webhook Discord
+data/*.json
+!data/*.example.json
+
+# ─── 6. AI MODELS & HEAVY ASSETS (ON-DEMAND) ────────────────
 data/models/
 *.onnx
+eng.traineddata
 
-# Operating System Files
+# ─── 7. OPERATING SYSTEM & IDE TEMPORARY FILES ──────────────
+.vscode/
+.idea/
 .DS_Store
 Thumbs.db
+desktop.ini

@@ -56,7 +56,7 @@ if (selectedProvider === 'ngrok') {
   // Config ngrok authtoken jika ada
   if (ngrokToken) {
     try {
-      execSync(`${npxCmd} ngrok config add-authtoken ${ngrokToken}`, { stdio: 'ignore' });
+      execSync(`${npxCmd} -y ngrok config add-authtoken ${ngrokToken}`, { stdio: 'ignore' });
       console.log('🔑 Ngrok Authtoken terkonfigurasi');
     } catch (e) {
       console.warn('⚠️ Gagal memasang ngrok authtoken:', e.message);

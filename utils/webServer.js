@@ -121,6 +121,58 @@ function startWebServer(tgManager, channelMap, port = 3000, tg2dcStore = null) {
     }
   }, 60 * 60 * 1000); // Check every hour
 
+  // ── Dashboard Authentication Middleware ────────────────────
+  const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || process.env.ADMIN_PASSWORD || '';
+
+  // Endpoint cek status auth
+  app.get('/api/auth/status', (req, res) => {
+    const token = (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '') ||
+                  req.headers['x-dashboard-key'] ||
+                  req.query.key;
+    const isAuthenticated = !DASHBOARD_PASSWORD || (token === DASHBOARD_PASSWORD);
+    res.json({
+      authRequired: Boolean(DASHBOARD_PASSWORD),
+      authenticated: isAuthenticated
+    });
+  });
+
+  // Endpoint login verifikasi password
+  app.post('/api/auth/login', (req, res) => {
+    const { password } = req.body || {};
+    if (!DASHBOARD_PASSWORD) {
+      return res.json({ success: true, message: 'No password configured' });
+    }
+    if (password === DASHBOARD_PASSWORD) {
+      return res.json({ success: true, token: DASHBOARD_PASSWORD });
+    }
+    return res.status(401).json({ success: false, error: 'Password dashboard salah!' });
+  });
+
+  // Middleware wajib login jika DASHBOARD_PASSWORD diset
+  const requireAuth = (req, res, next) => {
+    if (!DASHBOARD_PASSWORD) return next();
+
+    const authHeader = req.headers['authorization'] || '';
+    const token = authHeader.replace(/^Bearer\s+/i, '') ||
+                  req.headers['x-dashboard-key'] ||
+                  req.query.key;
+
+    if (token === DASHBOARD_PASSWORD) {
+      return next();
+    }
+
+    return res.status(401).json({
+      error: 'Unauthorized: Akses dashboard dilindungi password',
+      authRequired: true
+    });
+  };
+
+  // Lindungi semua rute /api kecuali endpoint auth
+  app.use('/api', (req, res, next) => {
+    if (req.path.startsWith('/auth/')) return next();
+    return requireAuth(req, res, next);
+  });
+
   // ── Status & Stats ──────────────────────────────────────────
   app.get('/api/status', (req, res) => {
     const s   = stats.getSummary();

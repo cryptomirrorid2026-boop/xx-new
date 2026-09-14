@@ -134,6 +134,10 @@
                     <button id="theme-toggle" class="btn-icon" title="Toggle Dark/Light Mode">
                         <i class='bx bx-moon' id="theme-icon"></i>
                     </button>
+                    <!-- Lock / Logout Dashboard Button -->
+                    <button id="btn-lock-dashboard" class="btn-icon" title="Kunci Dashboard" style="display:none;">
+                        <i class='bx bx-lock-alt'></i>
+                    </button>
                     <div class="topbar-status">
                         <span class="status-pulse"></span>
                         <span id="status-text">Sistem Online</span>
@@ -1478,6 +1482,32 @@
             <div class="modal-footer" style="justify-content: stretch;">
                 <button id="btn-restart-cancel" class="btn-ghost flex-1">Cancel</button>
                 <button id="btn-restart-confirm" class="btn-primary flex-1"><i class='bx bx-power-off'></i> Restart</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard Authentication Modal -->
+    <div id="modal-auth" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-auth-title" style="backdrop-filter: blur(8px); z-index: 9999;">
+        <div class="modal-content modal-sm" style="box-shadow: 0 20px 40px rgba(0,0,0,0.5); border: 1px solid var(--border-color); max-width: 420px;">
+            <div class="modal-body" style="text-align:center; padding: 32px 24px 20px;">
+                <div class="modal-icon primary" style="background: rgba(59,130,246,0.15); color: #3b82f6; width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; font-size: 2rem;">
+                    <i class='bx bx-lock-alt'></i>
+                </div>
+                <h2 id="modal-auth-title" style="margin-bottom:8px; font-size: 1.35rem;">Autentikasi Dashboard</h2>
+                <p style="color:var(--text-secondary); margin-bottom:20px; font-size:0.9rem;">Dashboard ini dilindungi oleh password keamanan. Masukkan password untuk mengakses.</p>
+                <div class="form-group" style="text-align: left; margin-bottom: 12px;">
+                    <label style="font-weight: 500; font-size: 0.9rem;">Password Dashboard</label>
+                    <div style="position: relative;">
+                        <input type="password" id="auth-password-input" class="form-control" placeholder="Masukkan password..." style="padding-right: 42px;">
+                        <i id="btn-toggle-auth-pwd" class='bx bx-show' style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--text-secondary); font-size: 1.25rem;"></i>
+                    </div>
+                    <div id="auth-error-msg" style="color: #ef4444; font-size: 0.85rem; margin-top: 8px; display: none;"></div>
+                </div>
+            </div>
+            <div class="modal-footer" style="padding: 0 24px 24px;">
+                <button id="btn-auth-submit" class="btn-primary" style="width: 100%; justify-content: center; padding: 12px; font-size: 1rem;">
+                    <i class='bx bx-log-in-circle'></i> Buka Dashboard
+                </button>
             </div>
         </div>
     </div>

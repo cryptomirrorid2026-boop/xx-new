@@ -216,11 +216,10 @@ async function getSenderAvatarUrl(client, message) {
       const avatarPath = path.join(tmpDir, `${senderId}.jpg`);
       fs.writeFileSync(avatarPath, photoBuffer);
 
-      // Jika ada PUBLIC_URL (misal VPS IP atau domain ngrok), pakai itu.
-      // Jika tidak ada, Discord tidak akan bisa membaca localhost, jadi pakai fallback.
-      if (process.env.PUBLIC_URL) {
-        let baseUrl = process.env.PUBLIC_URL.replace(/\/$/, '');
-        const avatarUrl = `${baseUrl}/avatars/${senderId}.jpg`;
+      // Gunakan PUBLIC_URL dari .env atau domain publik dari data/tunnel.json
+      const publicBaseUrl = getPublicUrl();
+      if (publicBaseUrl) {
+        const avatarUrl = `${publicBaseUrl}/avatars/${senderId}.jpg`;
         avatarCache.set(senderId, avatarUrl);
         return avatarUrl;
       } else {

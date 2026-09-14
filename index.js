@@ -125,12 +125,10 @@ function parseTelegramBots() {
     addBot(1, process.env.BOT_TOKEN);
   }
 
-  // Fallback ke token default jika belum diset di Railway
+  // Validasi jika belum ada token Telegram yang dikonfigurasi
   if (count === 0) {
-    const fallbackTg = '8933930421:AAFna_Suk5tTtBqq5ybHrPQ8A0fgT-j_kEQ';
-    tgManager.add(1, fallbackTg);
-    count++;
-    logger.info('Menggunakan Telegram bot token default.');
+    logger.error('❌ Tidak ada Telegram Bot token yang valid di environment variables!');
+    logger.warn('Silakan atur TELEGRAM_BOT_TOKEN atau TELEGRAM_BOT_1 di file .env');
   }
 
   logger.info(`Ditemukan ${count} Telegram Bot`);
@@ -260,22 +258,26 @@ const HEALTH_PORT = parseInt(process.env.PORT || process.env.HEALTH_PORT || '500
 if (ENABLE_WEB) {
   startWebServer(tgManager, channelMap, HEALTH_PORT, tg2dcStore);
 
-  // Otomatis aktifkan Tunnel (Ngrok / Cloudflare) hanya saat di lokal
+  // Otomatis aktifkan Tunnel (Ngrok / Cloudflare) hanya jika BUKAN di cloud dan BUKAN dikelola PM2
   const isCloudEnv = Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RENDER || process.env.ENABLE_TUNNEL === 'false');
-  if (!isCloudEnv) {
+  const isManagedByPM2 = Boolean(process.env.pm_id !== undefined || process.env.PM2_HOME);
+
+  if (isCloudEnv) {
+    logger.info('☁️ Cloud Environment terdeteksi (Railway/Render) — Tunnel dinonaktifkan (gunakan domain Railway).');
+  } else if (isManagedByPM2) {
+    logger.info('⚙️ PM2 terdeteksi — Tunnel process dikelola mandiri oleh PM2 (mencegah tabrakan ganda).');
+  } else {
     try {
       const { fork } = require('child_process');
       const path = require('path');
       const tunnelScript = path.join(__dirname, 'tunnel.js');
       if (require('fs').existsSync(tunnelScript)) {
-        logger.info('🚀 Memulai Tunnel Process (Ngrok / Cloudflare)...');
+        logger.info('🚀 Memulai Tunnel Process standalone (Ngrok / Cloudflare)...');
         fork(tunnelScript, [], { stdio: 'inherit' });
       }
     } catch (err) {
       logger.warn('Gagal memulai tunnel process:', err.message);
     }
-  } else {
-    logger.info('☁️ Cloud Environment terdeteksi (Railway/Render) — Tunnel dinonaktifkan (gunakan domain Railway).');
   }
 } else {
   logger.info('🌐 Web Server / Dashboard dinonaktifkan via .env (ENABLE_WEB_SERVER=false)');

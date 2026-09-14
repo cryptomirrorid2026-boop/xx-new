@@ -8,6 +8,131 @@
 document.addEventListener('DOMContentLoaded', () => {
 const API = '/api';
 
+// ─── Dashboard Authentication Manager ──────────────────────────
+let dashboardToken = localStorage.getItem('nexus-dashboard-token') || '';
+const modalAuth = document.getElementById('modal-auth');
+const authPasswordInput = document.getElementById('auth-password-input');
+const authErrorMsg = document.getElementById('auth-error-msg');
+const btnAuthSubmit = document.getElementById('btn-auth-submit');
+const btnToggleAuthPwd = document.getElementById('btn-toggle-auth-pwd');
+const btnLockDashboard = document.getElementById('btn-lock-dashboard');
+
+function showAuthModal() {
+    if (modalAuth) {
+        modalAuth.classList.add('show');
+        if (authPasswordInput) {
+            authPasswordInput.value = '';
+            setTimeout(() => authPasswordInput.focus(), 150);
+        }
+        if (authErrorMsg) authErrorMsg.style.display = 'none';
+    }
+}
+
+function hideAuthModal() {
+    if (modalAuth) modalAuth.classList.remove('show');
+}
+
+// Override native fetch to automatically include Authorization token
+const rawFetch = window.fetch;
+window.fetch = async function(url, options = {}) {
+    options = options || {};
+    options.headers = options.headers || {};
+    const token = localStorage.getItem('nexus-dashboard-token') || '';
+    if (typeof url === 'string' && url.startsWith('/api')) {
+        if (options.headers instanceof Headers) {
+            if (token) options.headers.set('Authorization', `Bearer ${token}`);
+        } else {
+            if (token) options.headers['Authorization'] = `Bearer ${token}`;
+        }
+    }
+    const res = await rawFetch(url, options);
+    if (res.status === 401 && typeof url === 'string' && url.startsWith('/api') && !url.includes('/api/auth/')) {
+        showAuthModal();
+    }
+    return res;
+};
+
+// Check Auth Status on Startup
+async function checkAuthStatus() {
+    try {
+        const res = await rawFetch(`${API}/auth/status`, {
+            headers: { 'Authorization': `Bearer ${dashboardToken}` }
+        }).then(r => r.json());
+
+        if (res.authRequired) {
+            if (btnLockDashboard) btnLockDashboard.style.display = 'inline-flex';
+            if (!res.authenticated) {
+                showAuthModal();
+            }
+        } else {
+            if (btnLockDashboard) btnLockDashboard.style.display = 'none';
+        }
+    } catch (_) {}
+}
+
+async function handleAuthLogin() {
+    const password = authPasswordInput ? authPasswordInput.value.trim() : '';
+    if (!password) {
+        if (authErrorMsg) {
+            authErrorMsg.textContent = 'Password tidak boleh kosong!';
+            authErrorMsg.style.display = 'block';
+        }
+        return;
+    }
+    try {
+        const res = await rawFetch(`${API}/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            dashboardToken = data.token || password;
+            localStorage.setItem('nexus-dashboard-token', dashboardToken);
+            hideAuthModal();
+            showToast('Berhasil login ke Dashboard!', 'success');
+            loadStats();
+            renderCharts();
+        } else {
+            if (authErrorMsg) {
+                authErrorMsg.textContent = data.error || 'Password salah!';
+                authErrorMsg.style.display = 'block';
+            }
+        }
+    } catch (err) {
+        if (authErrorMsg) {
+            authErrorMsg.textContent = 'Gagal menghubungi server!';
+            authErrorMsg.style.display = 'block';
+        }
+    }
+}
+
+if (btnAuthSubmit) btnAuthSubmit.addEventListener('click', handleAuthLogin);
+if (authPasswordInput) {
+    authPasswordInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') handleAuthLogin();
+    });
+}
+if (btnToggleAuthPwd) {
+    btnToggleAuthPwd.addEventListener('click', () => {
+        const isPwd = authPasswordInput.type === 'password';
+        authPasswordInput.type = isPwd ? 'text' : 'password';
+        btnToggleAuthPwd.className = isPwd ? 'bx bx-hide' : 'bx bx-show';
+    });
+}
+if (btnLockDashboard) {
+    btnLockDashboard.addEventListener('click', () => {
+        localStorage.removeItem('nexus-dashboard-token');
+        dashboardToken = '';
+        showAuthModal();
+        showToast('Dashboard dikunci.', 'warning');
+    });
+}
+
+// Panggil cek status auth saat DOM siap
+checkAuthStatus();
+
+
 // ─── Theme ────────────────────────────────────────────────────
 const htmlEl = document.documentElement;
 const themeToggle = document.getElementById('theme-toggle');
@@ -175,12 +300,14 @@ document.querySelectorAll('.close-modal').forEach(btn => {
 });
 window.addEventListener('click', e => {
     document.querySelectorAll('.modal.show').forEach(m => {
-        if (e.target === m) m.classList.remove('show');
+        if (e.target === m && m.id !== 'modal-auth') m.classList.remove('show');
     });
 });
 window.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-        document.querySelectorAll('.modal.show').forEach(m => m.classList.remove('show'));
+        document.querySelectorAll('.modal.show').forEach(m => {
+            if (m.id !== 'modal-auth') m.classList.remove('show');
+        });
     }
 });
 
@@ -884,7 +1011,9 @@ function connectSSE() {
     const sseStatus = document.getElementById('sse-status');
     let es;
     function connect() {
-        es = new EventSource(`${API}/events`);
+        const token = localStorage.getItem('nexus-dashboard-token') || '';
+        const url = token ? `${API}/events?key=${encodeURIComponent(token)}` : `${API}/events`;
+        es = new EventSource(url);
         es.onopen = () => { sseConnected = true; sseStatus.className = 'sse-status'; };
         es.onmessage = e => { try { addLogEntry(JSON.parse(e.data)); } catch {} };
         es.onerror = () => { sseConnected = false; sseStatus.className = 'sse-status disconnected'; es.close(); setTimeout(connect, 5000); };

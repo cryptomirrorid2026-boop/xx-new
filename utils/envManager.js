@@ -68,7 +68,7 @@ class EnvManager {
           continue;
         }
         
-        if (updates.hasOwnProperty(key)) {
+        if (updates.hasOwnProperty(key) && !key.startsWith('_')) {
           newLines.push(`${key}=${updates[key]}`);
           updatedKeys.add(key);
         } else {
@@ -79,9 +79,9 @@ class EnvManager {
       }
     }
     
-    // Tambahkan key baru di bagian paling bawah
+    // Tambahkan key baru di bagian paling bawah (kecuali internal flags yang diawali _)
     for (const [key, val] of Object.entries(updates)) {
-      if (!updatedKeys.has(key)) {
+      if (!key.startsWith('_') && !updatedKeys.has(key)) {
         newLines.push(`${key}=${val}`);
       }
     }

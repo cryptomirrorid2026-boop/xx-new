@@ -1,0 +1,9 @@
+[
+  {
+    "name": "Contoh Telegram ke Discord",
+    "tgChatId": "-1001234567890",
+    "tgThreadId": null,
+    "botKey": "1",
+    "dcWebhookUrl": "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN"
+  }
+]

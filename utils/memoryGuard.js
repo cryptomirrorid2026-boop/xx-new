@@ -64,8 +64,10 @@ class MemoryGuard {
       }
 
       // Exit gracefully — PM2 akan otomatis menyalakan ulang bot dalam 1 detik
+      // Di Cloud (Railway/Render), exit code 1 diperlukan untuk memicu auto-restart container
+      const exitCode = (process.env.RAILWAY_ENVIRONMENT || process.env.RENDER) ? 1 : 0;
       setTimeout(() => {
-        process.exit(0);
+        process.exit(exitCode);
       }, 1000);
     }
   }
