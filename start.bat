@@ -1,4 +1,5 @@
 @echo off
+set "PATH=%LOCALAPPDATA%\Microsoft\WinGet\Packages\Git.MinGit_Microsoft.Winget.Source_8wekyb3d8bbwe\cmd;%ProgramFiles%\Git\cmd;%ProgramFiles(x86)%\Git\cmd;%LOCALAPPDATA%\Programs\Git\cmd;C:\Git\cmd;C:\Program Files\nodejs;C:\nvm4w\nodejs;%APPDATA%\npm;%PATH%"
 title Discord to Telegram Mirror Bot
 color 0B
 echo.
