@@ -735,6 +735,23 @@ function startWebServer(tgManager, channelMap, port = 3000, tg2dcStore = null) {
   app.post('/api/restart', (_, res) => {
     res.json({ success: true });
     pushEvent('warning', 'Bot restarting via dashboard...');
+    
+    // Coba trigger PM2 restart dengan --update-env jika berjalan dengan PM2
+    try {
+      const { exec } = require('child_process');
+      if (process.env.pm_id !== undefined || process.env.PM2_HOME) {
+        logger.info('Memicu PM2 restart dengan --update-env...');
+        exec('pm2 restart all --update-env', (err) => {
+          if (err) {
+            logger.warn('Gagal exec pm2 restart, fallback ke process.exit:', err.message);
+            const exitCode = (process.env.RAILWAY_ENVIRONMENT || process.env.RENDER) ? 1 : 0;
+            process.exit(exitCode);
+          }
+        });
+        return;
+      }
+    } catch (_) {}
+
     // Di cloud (Railway/Render), exit code 1 memicu auto-restart container (On Failure).
     // Exit code 0 membuat Railway menganggap selesai (Completed) dan mati permanen.
     const exitCode = (process.env.RAILWAY_ENVIRONMENT || process.env.RENDER) ? 1 : 0;

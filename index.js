@@ -18,11 +18,12 @@ if (typeof globalThis.File === 'undefined') {
   } catch (_) {}
 }
 
-require('dotenv').config();
+require('dotenv').config({ override: true });
 
 const { Client }         = require('discord.js-selfbot-v13');
 const tgManager             = require('./utils/telegramManager');
 const discordRegistry       = require('./utils/discordRegistry');
+const envManager            = require('./utils/envManager');
 const logger                = require('./utils/logger');
 const RateLimiter           = require('./utils/rateLimiter');
 const stats                 = require('./utils/stats');
@@ -72,25 +73,33 @@ function parseDiscordTokens(exitOnError = false) {
     }
   };
 
-  // 1. DISCORD_TOKENS (koma atau baris baru)
-  if (process.env.DISCORD_TOKENS) {
+  // Prioritas utama: Baca langsung dari file .env (mencegah cache lama PM2 di process.env)
+  const env = envManager.readEnv();
+  if (env.DISCORD_TOKENS) {
+    env.DISCORD_TOKENS.split(/[\r\n,]+/).forEach(add);
+  }
+
+  // Fallback: process.env.DISCORD_TOKENS
+  if (tokens.length === 0 && process.env.DISCORD_TOKENS) {
     process.env.DISCORD_TOKENS.split(/[\r\n,]+/).forEach(add);
   }
 
   // 2. DISCORD_TOKEN
-  if (process.env.DISCORD_TOKEN) {
-    process.env.DISCORD_TOKEN.split(/[\r\n,]+/).forEach(add);
+  const singleToken = env.DISCORD_TOKEN || process.env.DISCORD_TOKEN;
+  if (tokens.length === 0 && singleToken) {
+    singleToken.split(/[\r\n,]+/).forEach(add);
   }
 
   // 3. Support TOKEN1, TOKEN2, DISCORD_TOKEN_1, dll.
-  for (const [key, val] of Object.entries(process.env)) {
+  const allVars = { ...process.env, ...env };
+  for (const [key, val] of Object.entries(allVars)) {
     if (/^(TOKEN\d+|DISCORD_TOKEN_\d+)$/i.test(key)) {
       add(val);
     }
   }
 
   if (tokens.length === 0) {
-    logger.error('Tidak ada Discord token valid di environment variables!');
+    logger.error('Tidak ada Discord token valid di environment variables atau .env!');
     if (exitOnError) process.exit(1);
   } else {
     logger.info(`Ditemukan ${tokens.length} Discord token`);
@@ -102,6 +111,7 @@ function parseDiscordTokens(exitOnError = false) {
 // ─── Parse Telegram Bots ──────────────────────────────────────────────────────
 function parseTelegramBots() {
   let count = 0;
+  const env = envManager.readEnv();
 
   const addBot = (key, token) => {
     const cleaned = cleanToken(token);
@@ -112,22 +122,24 @@ function parseTelegramBots() {
   };
 
   let i = 1;
-  while (process.env[`TELEGRAM_BOT_${i}`]) {
-    addBot(i, process.env[`TELEGRAM_BOT_${i}`]);
+  while (env[`TELEGRAM_BOT_${i}`] || process.env[`TELEGRAM_BOT_${i}`]) {
+    addBot(i, env[`TELEGRAM_BOT_${i}`] || process.env[`TELEGRAM_BOT_${i}`]);
     i++;
   }
 
-  if (process.env.TELEGRAM_BOT_TOKEN) {
-    addBot(1, process.env.TELEGRAM_BOT_TOKEN);
+  const singleTg = env.TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
+  if (singleTg) {
+    addBot(1, singleTg);
   }
 
-  if (process.env.BOT_TOKEN) {
-    addBot(1, process.env.BOT_TOKEN);
+  const botToken = env.BOT_TOKEN || process.env.BOT_TOKEN;
+  if (botToken) {
+    addBot(1, botToken);
   }
 
   // Validasi jika belum ada token Telegram yang dikonfigurasi
   if (count === 0) {
-    logger.error('❌ Tidak ada Telegram Bot token yang valid di environment variables!');
+    logger.error('❌ Tidak ada Telegram Bot token yang valid di environment variables atau .env!');
     logger.warn('Silakan atur TELEGRAM_BOT_TOKEN atau TELEGRAM_BOT_1 di file .env');
   }
 
@@ -303,11 +315,13 @@ let tg2dcInitialized = false;
 discordTokens.forEach((token, idx) => {
   const accountNum = idx + 1;
 
+  discordRegistry.setStatus(token, 'connecting');
+
   const client = new Client({ checkUpdate: false });
 
   client.once('ready', (c) => {
     logger.success(`Discord Akun #${accountNum} online: ${c.user.tag}`);
-    discordRegistry.setTag(token, c.user.tag);
+    discordRegistry.setStatus(token, 'online', c.user.tag);
     logger.info(`Akun #${accountNum} terdaftar di ${c.guilds.cache.size} server`);
     registerHandlers(client, tgManager, channelMap, config, rateLimiter);
     
@@ -333,6 +347,7 @@ discordTokens.forEach((token, idx) => {
 
   client.on('error', err => {
     logger.error(`Discord Akun #${accountNum} error`, err.message);
+    discordRegistry.setStatus(token, 'error', null, err.message);
   });
 
   client.on('warn', warn => {
@@ -344,20 +359,24 @@ discordTokens.forEach((token, idx) => {
 
   client.on('shardDisconnect', (event, shardId) => {
     logger.warn(`Discord Akun #${accountNum} (Shard ${shardId}) terputus! Code: ${event.code}. Auto-reconnect berjalan...`);
+    discordRegistry.setStatus(token, 'error', null, `Disconnected (${event.code})`);
   });
 
   client.on('shardReconnecting', (shardId) => {
     logger.info(`Discord Akun #${accountNum} (Shard ${shardId}) mencoba terhubung kembali...`);
+    discordRegistry.setStatus(token, 'connecting');
   });
 
   client.on('shardResume', (shardId, replayedEvents) => {
     logger.success(`Discord Akun #${accountNum} (Shard ${shardId}) koneksi pulih (${replayedEvents} event di-replay)!`);
+    discordRegistry.setStatus(token, 'online');
   });
 
   logger.info(`Login Discord Akun #${accountNum}...`);
   client.login(token).catch(err => {
     logger.error(`Akun #${accountNum} gagal login!`, err.message);
     logger.warn('Periksa token di DISCORD_TOKENS');
+    discordRegistry.setStatus(token, 'error', null, err.message);
   });
 });
 

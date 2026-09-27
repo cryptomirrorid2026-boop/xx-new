@@ -686,13 +686,25 @@ function renderBots() {
 function renderTokens() {
     const c = document.getElementById('discord-tokens-container');
     c.innerHTML = '';
-    if (!dcState.length) dcState.push({ token: '', tag: '' });
+    if (!dcState.length) dcState.push({ token: '', tag: '', status: '', error: '' });
     dcState.forEach((item, i) => {
         const token = typeof item === 'string' ? item : (item.token || '');
         const tag = typeof item === 'object' ? (item.tag || '') : '';
+        const status = typeof item === 'object' ? (item.status || '') : '';
+        const error = typeof item === 'object' ? (item.error || '') : '';
+        
+        let badgeHtml = '';
+        if (tag) {
+            badgeHtml = `<span class="account-name-badge badge-online" title="Online: ${tag}"><i class='bx bx-check-circle'></i> ${tag}</span>`;
+        } else if (status === 'connecting') {
+            badgeHtml = `<span class="account-name-badge badge-warning" title="Sedang menghubungkan ke Discord..."><i class='bx bx-loader-alt bx-spin'></i> Menghubungkan...</span>`;
+        } else if (status === 'error') {
+            badgeHtml = `<span class="account-name-badge badge-danger" title="${error || 'Token tidak valid / gagal login'}"><i class='bx bx-error-circle'></i> ${error ? (error.length > 20 ? error.substring(0, 20) + '...' : error) : 'Gagal Login'}</span>`;
+        }
+
         const d = document.createElement('div');
         d.className = 'input-group';
-        d.innerHTML = `<div class="id-badge"><i class='bx bxl-discord'></i></div><input type="password" value="${token}" placeholder="Discord Token..." class="dc-token-input" data-idx="${i}">${tag ? `<span class="account-name-badge" title="${tag}">${tag}</span>` : ''}<button class="btn-danger btn-remove-token" data-idx="${i}"><i class='bx bx-x'></i></button>`;
+        d.innerHTML = `<div class="id-badge"><i class='bx bxl-discord'></i></div><input type="password" value="${token}" placeholder="Discord Token..." class="dc-token-input" data-idx="${i}">${badgeHtml}<button class="btn-danger btn-remove-token" data-idx="${i}"><i class='bx bx-x'></i></button>`;
         c.appendChild(d);
     });
     c.querySelectorAll('.btn-remove-token').forEach(b => b.addEventListener('click', () => { dcState.splice(+b.dataset.idx, 1); renderTokens(); }));

@@ -1,7 +1,7 @@
 const { spawn, execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config();
+require('dotenv').config({ override: true });
 
 const port = process.env.HEALTH_PORT || process.env.PORT || '5000';
 const provider = (process.env.TUNNEL_PROVIDER || '').toLowerCase(); // 'ngrok' | 'localtunnel' | 'cloudflare'

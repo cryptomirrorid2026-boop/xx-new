@@ -100,8 +100,13 @@ class EnvManager {
     const discordTokens = [];
     if (env.DISCORD_TOKENS && !env.DISCORD_TOKENS.includes('ISI_')) {
       env.DISCORD_TOKENS.split(',').map(t => t.trim()).filter(Boolean).forEach(t => {
-        const tag = discordRegistry.getTag(t) || '';
-        discordTokens.push({ token: t, tag });
+        const info = discordRegistry.getInfo ? discordRegistry.getInfo(t) : { tag: discordRegistry.getTag(t) || '' };
+        discordTokens.push({
+          token: t,
+          tag: info.tag || '',
+          status: info.status || '',
+          error: info.error || ''
+        });
       });
     }
     

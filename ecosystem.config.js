@@ -5,7 +5,7 @@
 
 // Muat variabel lingkungan dari file .env secara aman
 try {
-  require('dotenv').config();
+  require('dotenv').config({ override: true });
 } catch (e) {
   // Fallback jika package dotenv belum terinstall di environment tertentu
 }
