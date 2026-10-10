@@ -44,26 +44,11 @@ if (!selectedProvider) {
 console.log(`🚀 Memulai Tunnel Provider: [${selectedProvider.toUpperCase()}] (Target Port: ${port})...`);
 
 if (selectedProvider === 'ngrok') {
-  // Matikan proses ngrok zombie lama jika ada (mencegah ERR_NGROK_334)
-  try {
-    if (process.platform === 'win32') {
-      execSync('taskkill /F /IM ngrok.exe', { stdio: 'ignore' });
-    } else {
-      execSync('pkill -f ngrok', { stdio: 'ignore' });
-    }
-  } catch (_) {}
-
-  // Config ngrok authtoken jika ada
-  if (ngrokToken) {
-    try {
-      execSync(`${npxCmd} -y ngrok config add-authtoken ${ngrokToken}`, { stdio: 'ignore' });
-      console.log('🔑 Ngrok Authtoken terkonfigurasi');
-    } catch (e) {
-      console.warn('⚠️ Gagal memasang ngrok authtoken:', e.message);
-    }
-  }
-
   const ngrokArgs = ['-y', 'ngrok', 'http', port];
+  if (ngrokToken) {
+    ngrokArgs.push(`--authtoken=${ngrokToken}`);
+    console.log('🔑 Ngrok Authtoken terkonfigurasi via parameter');
+  }
   if (ngrokDomain) {
     const cleanDomain = ngrokDomain.replace(/^https?:\/\//, '');
     ngrokArgs.push(`--url=${cleanDomain}`);
