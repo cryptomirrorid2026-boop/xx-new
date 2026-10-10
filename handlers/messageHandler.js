@@ -17,8 +17,9 @@ const axios = require('axios');
 const FormData = require('form-data');
 const { forwardMedia, processDiscordMedia } = require('./mediaHandler');
 
-// Cache untuk webhook DC-to-DC agar tidak spam API
+// Cache untuk webhook & channel/role DC-to-DC agar tidak spam API
 const dcWebhookCache = new Map();
+const dcChannelCache = new Map();
 
 async function getDcWebhookGuildId(webhookUrl) {
   if (dcWebhookCache.has(webhookUrl)) return dcWebhookCache.get(webhookUrl);
@@ -35,57 +36,191 @@ async function getDcWebhookGuildId(webhookUrl) {
 }
 
 // Fungsi untuk menerjemahkan mention antar server Discord (DC-to-DC)
+// Menangani Role mentions (<@&id>), Channel/Thread mentions (<#id>), dan User mentions (<@id>)
 async function translateDcToDcMentions(client, text, sourceGuild, targetWebhookUrl) {
-  if (!text || !text.includes('<@&')) return text;
-  
-  const targetGuildId = await getDcWebhookGuildId(targetWebhookUrl);
-  if (!targetGuildId) return text;
+  if (!text) return text;
 
-  const targetGuild = client.guilds.cache.get(targetGuildId);
-  if (!targetGuild) return text;
+  const hasRoleMention = text.includes('<@&');
+  const hasChannelMention = text.includes('<#');
+  const hasUserMention = /<@!?\d+>/.test(text);
 
-  const regex = /<@&(\d+)>/g;
+  if (!hasRoleMention && !hasChannelMention && !hasUserMention) return text;
+
   let newText = text;
-  const matches = [...text.matchAll(regex)];
-  
-  for (let i = matches.length - 1; i >= 0; i--) {
-    const match = matches[i];
-    const sourceRoleId = match[1];
-    
-    // Cari nama role di server asal
-    const sourceRole = sourceGuild.roles.cache.get(sourceRoleId);
-    if (!sourceRole) continue;
-    
-    const roleName = sourceRole.name.toLowerCase();
-    
-    // Cari role dengan nama yang sama di server tujuan
-    let targetRoleId = null;
-    let targetRole = targetGuild.roles.cache.find(r => r.name.toLowerCase() === roleName);
-    
-    if (targetRole) {
-      targetRoleId = targetRole.id;
-    } else {
-      try {
-        const roles = await targetGuild.roles.fetch();
-        targetRole = roles.find(r => r.name.toLowerCase() === roleName);
-        if (targetRole) targetRoleId = targetRole.id;
-      } catch (err) {
-        // Abaikan
-      }
-    }
-    
-    const index = match.index;
-    const length = match[0].length;
-    
-    if (targetRoleId) {
-      // Ganti dengan Role ID di server tujuan
-      newText = newText.slice(0, index) + `<@&${targetRoleId}>` + newText.slice(index + length);
-    } else {
-      // Jika tidak ketemu di server tujuan, jadikan plain text agar tidak menjadi @unknown-role
-      newText = newText.slice(0, index) + `@${sourceRole.name}` + newText.slice(index + length);
+
+  let targetGuild = null;
+  if (targetWebhookUrl) {
+    const targetGuildId = await getDcWebhookGuildId(targetWebhookUrl);
+    if (targetGuildId) {
+      targetGuild = client.guilds?.cache?.get(targetGuildId) || null;
     }
   }
-  
+
+  const normalize = (str) => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  // 1. TERJEMAHKAN CHANNEL & THREAD MENTIONS: <#channelId>
+  if (hasChannelMention) {
+    const channelMatches = [...newText.matchAll(/<#(\d+)>/g)];
+    for (let i = channelMatches.length - 1; i >= 0; i--) {
+      const match = channelMatches[i];
+      const sourceChannelId = match[1];
+
+      // Ambil channel / thread dari cache atau fetch
+      let sourceChannel = sourceGuild?.channels?.cache?.get(sourceChannelId) || client.channels?.cache?.get(sourceChannelId);
+      if (!sourceChannel) {
+        if (dcChannelCache.has(sourceChannelId)) {
+          sourceChannel = dcChannelCache.get(sourceChannelId);
+        } else {
+          try {
+            sourceChannel = await client.channels?.fetch(sourceChannelId).catch(() => null);
+            if (sourceChannel) dcChannelCache.set(sourceChannelId, sourceChannel);
+          } catch (_) {}
+        }
+      }
+
+      if (!sourceChannel) {
+        continue;
+      }
+
+      const isThread = (typeof sourceChannel.isThread === 'function' && sourceChannel.isThread()) ||
+                       [10, 11, 12, 'GUILD_NEWS_THREAD', 'GUILD_PUBLIC_THREAD', 'GUILD_PRIVATE_THREAD'].includes(sourceChannel.type);
+
+      let parent = null;
+      if (isThread) {
+        parent = sourceChannel.parent || (sourceChannel.parentId ? (sourceGuild?.channels?.cache?.get(sourceChannel.parentId) || client.channels?.cache?.get(sourceChannel.parentId)) : null);
+        if (!parent && sourceChannel.parentId) {
+          try {
+            parent = await client.channels?.fetch(sourceChannel.parentId).catch(() => null);
+          } catch (_) {}
+        }
+      }
+
+      const channelDisplayName = parent 
+        ? `${parent.name} › ${sourceChannel.name}`
+        : sourceChannel.name;
+
+      // Cari channel / thread yang cocok di server tujuan jika ada
+      let targetChannelId = null;
+      if (targetGuild) {
+        const normSource = normalize(sourceChannel.name);
+        const normParent = parent ? normalize(parent.name) : '';
+
+        // 1. Exact match nama channel / thread atau parent
+        let targetChannel = targetGuild.channels?.cache?.find(c => 
+          c.name.toLowerCase() === sourceChannel.name.toLowerCase() ||
+          (parent && c.name.toLowerCase() === parent.name.toLowerCase())
+        );
+
+        // 2. Normalized match (tanpa emoji/karakter khusus)
+        if (!targetChannel) {
+          targetChannel = targetGuild.channels?.cache?.find(c => {
+            const normC = normalize(c.name);
+            return normC && (normC === normSource || (normParent && normC === normParent));
+          });
+        }
+
+        // 3. Fetch dari target guild jika belum lengkap di cache
+        if (!targetChannel) {
+          try {
+            const fetched = await targetGuild.channels?.fetch().catch(() => null);
+            if (fetched) {
+              targetChannel = fetched.find(c => c && (
+                c.name.toLowerCase() === sourceChannel.name.toLowerCase() ||
+                (parent && c.name.toLowerCase() === parent.name.toLowerCase()) ||
+                (normSource && normalize(c.name) === normSource) ||
+                (normParent && normalize(c.name) === normParent)
+              ));
+            }
+          } catch (_) {}
+        }
+
+        if (targetChannel) {
+          targetChannelId = targetChannel.id;
+        }
+      }
+
+      const index = match.index;
+      const length = match[0].length;
+
+      if (targetChannelId) {
+        // Ganti dengan Mention Channel di server tujuan
+        newText = newText.slice(0, index) + `<#${targetChannelId}>` + newText.slice(index + length);
+      } else {
+        // Jika tidak ada channel di server tujuan, tampilkan nama teks aslinya
+        // agar tidak menjadi #unknown
+        newText = newText.slice(0, index) + `**# ${channelDisplayName}**` + newText.slice(index + length);
+      }
+    }
+  }
+
+  // 2. TERJEMAHKAN ROLE MENTIONS: <@&roleId>
+  if (hasRoleMention) {
+    const roleMatches = [...newText.matchAll(/<@&(\d+)>/g)];
+    for (let i = roleMatches.length - 1; i >= 0; i--) {
+      const match = roleMatches[i];
+      const sourceRoleId = match[1];
+
+      const sourceRole = sourceGuild?.roles?.cache?.get(sourceRoleId);
+      if (!sourceRole) continue;
+
+      const roleName = sourceRole.name.toLowerCase();
+      let targetRoleId = null;
+
+      if (targetGuild) {
+        let targetRole = targetGuild.roles?.cache?.find(r => r.name.toLowerCase() === roleName);
+        if (targetRole) {
+          targetRoleId = targetRole.id;
+        } else {
+          try {
+            const roles = await targetGuild.roles?.fetch().catch(() => null);
+            targetRole = roles?.find(r => r.name.toLowerCase() === roleName);
+            if (targetRole) targetRoleId = targetRole.id;
+          } catch (_) {}
+        }
+      }
+
+      const index = match.index;
+      const length = match[0].length;
+
+      if (targetRoleId) {
+        newText = newText.slice(0, index) + `<@&${targetRoleId}>` + newText.slice(index + length);
+      } else {
+        newText = newText.slice(0, index) + `@${sourceRole.name}` + newText.slice(index + length);
+      }
+    }
+  }
+
+  // 3. TERJEMAHKAN USER MENTIONS: <@userId> atau <@!userId>
+  if (hasUserMention) {
+    const userMatches = [...newText.matchAll(/<@!?(\d+)>/g)];
+    for (let i = userMatches.length - 1; i >= 0; i--) {
+      const match = userMatches[i];
+      const sourceUserId = match[1];
+
+      let userInTarget = false;
+      if (targetGuild) {
+        userInTarget = targetGuild.members?.cache?.has(sourceUserId);
+        if (!userInTarget) {
+          try {
+            const m = await targetGuild.members?.fetch(sourceUserId).catch(() => null);
+            if (m) userInTarget = true;
+          } catch (_) {}
+        }
+      }
+
+      // Jika user tidak ada di server tujuan, jadikan @Nama agar tidak menjadi @unknown-user
+      if (!userInTarget) {
+        const sourceMember = sourceGuild?.members?.cache?.get(sourceUserId);
+        const name = sourceMember?.displayName || sourceMember?.user?.username || client.users?.cache?.get(sourceUserId)?.username;
+        if (name) {
+          const index = match.index;
+          const length = match[0].length;
+          newText = newText.slice(0, index) + `@${name}` + newText.slice(index + length);
+        }
+      }
+    }
+  }
+
   return newText;
 }
 
@@ -760,7 +895,11 @@ async function handleEditedMessage(oldMessage, newMessage, channelMap, tgManager
 
     if (dcWebhookUrl && dcMsgId) {
       try {
-        const payload = { content: message.content || null };
+        let editContent = message.content ? message.content.trim() : null;
+        if (editContent) {
+          editContent = await translateDcToDcMentions(message.client, editContent, message.guild, dcWebhookUrl);
+        }
+        const payload = { content: editContent };
         if (message.embeds?.length > 0) {
           const validEmbeds = message.embeds
             .filter(e => e.type === 'rich' || e.type === 'article')
