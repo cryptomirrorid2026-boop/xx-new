@@ -108,12 +108,8 @@ if defined DT (
 )
 set "DEFAULT_MSG=Update snapshot: !TIMESTAMP!"
 
-echo Masukkan catatan update (Tekan ENTER untuk pesan default):
-echo Default: "!DEFAULT_MSG!"
-echo.
-set "USER_MSG="
-set /p "USER_MSG=Pesan Commit: "
-if not defined USER_MSG set "USER_MSG=!DEFAULT_MSG!"
+echo Menyiapkan commit otomatis: "!DEFAULT_MSG!"...
+set "USER_MSG=!DEFAULT_MSG!"
 
 echo.
 echo Menambahkan file ke stage tracking (git add -A)...

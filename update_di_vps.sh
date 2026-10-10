@@ -114,7 +114,7 @@ $PM2_CMD status
 echo "----------------------------------------------------------------"
 echo ""
 echo -e "${YELLOW}💡 Catatan:${NC}"
-echo "- Konfigurasi .env terbaru langsung diterapkan tanpa restart VPS."
+echo "- Dashboard dapat diakses di: http://localhost:5005 (atau http://IP_VPS:5005)"
 echo "- Data pelanggan/transaksi di SQLite tetap utuh dan aman."
 echo "- Cek log real-time bot dengan: pm2 logs"
 echo -e "${GREEN}================================================================${NC}"
