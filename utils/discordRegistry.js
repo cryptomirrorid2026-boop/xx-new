@@ -9,6 +9,7 @@ class DiscordRegistry {
   constructor() {
     this.tags     = new Map(); // token string -> tag string (e.g. user#1234)
     this.statuses = new Map(); // token string -> status ('online' | 'connecting' | 'error')
+    this.errors   = new Map(); // token string -> error message string
     this.clients  = [];        // Array of active Discord Client instances
   }
 
