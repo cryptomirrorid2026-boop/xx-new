@@ -16,18 +16,25 @@
 const axios = require('axios');
 const FormData = require('form-data');
 const { forwardMedia, processDiscordMedia } = require('./mediaHandler');
+const discordRegistry = require('../utils/discordRegistry');
+const channelStore = require('../utils/channelStore');
 
 // Cache untuk webhook & channel/role DC-to-DC agar tidak spam API
 const dcWebhookCache = new Map();
 const dcChannelCache = new Map();
 
-async function getDcWebhookGuildId(webhookUrl) {
+async function getDcWebhookInfo(webhookUrl) {
   if (dcWebhookCache.has(webhookUrl)) return dcWebhookCache.get(webhookUrl);
   try {
     const res = await axios.get(webhookUrl, { timeout: 10000 });
-    if (res.data && res.data.guild_id) {
-      dcWebhookCache.set(webhookUrl, res.data.guild_id);
-      return res.data.guild_id;
+    if (res.data) {
+      const info = {
+        guildId: res.data.guild_id,
+        channelId: res.data.channel_id,
+        name: res.data.name
+      };
+      dcWebhookCache.set(webhookUrl, info);
+      return info;
     }
   } catch (err) {
     // Abaikan error
@@ -35,152 +42,223 @@ async function getDcWebhookGuildId(webhookUrl) {
   return null;
 }
 
-// Fungsi untuk menerjemahkan mention antar server Discord (DC-to-DC)
-// Menangani Role mentions (<@&id>), Channel/Thread mentions (<#id>), dan User mentions (<@id>)
+async function getDcWebhookGuildId(webhookUrl) {
+  const info = await getDcWebhookInfo(webhookUrl);
+  return info?.guildId || null;
+}
+
+function normalizeChannelName(str) {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .replace(/cryptostocks?|crypstocks?/g, 'cryptostock')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+async function findTargetChannel(sourceChannel, targetGuild, parent) {
+  if (!targetGuild) return null;
+  const normSource = normalizeChannelName(sourceChannel?.name);
+  const normParent = parent ? normalizeChannelName(parent.name) : '';
+
+  // 1. Cek dari mapping channels.json jika source channel ID terdaftar
+  if (sourceChannel?.id) {
+    const mapping = channelStore?.get?.(sourceChannel.id);
+    if (mapping?.dcWebhookUrl) {
+      const info = await getDcWebhookInfo(mapping.dcWebhookUrl);
+      if (info?.channelId) {
+        const directChan = targetGuild.channels?.cache?.get(info.channelId);
+        if (directChan) return directChan;
+      }
+    }
+  }
+
+  // Helper search di cache
+  const searchInCache = () => {
+    // 2. Exact match nama channel atau parent
+    let found = targetGuild.channels?.cache?.find(c => {
+      const cNorm = normalizeChannelName(c.name);
+      if (!cNorm) return false;
+      return (normSource && cNorm === normSource) || (normParent && cNorm === normParent);
+    });
+    return found;
+  };
+
+  let targetChannel = searchInCache();
+
+  // 3. Fetch dari target guild jika belum lengkap di cache
+  if (!targetChannel) {
+    try {
+      await targetGuild.channels?.fetch().catch(() => null);
+      targetChannel = searchInCache();
+    } catch (_) {}
+  }
+
+  return targetChannel || null;
+}
+
+// Fungsi untuk menerjemahkan mention & link pesan antar server Discord (DC-to-DC)
+// Menangani Discord Message Links, Channel mentions (<#id>), Role mentions (<@&id>), dan User mentions (<@id>)
 async function translateDcToDcMentions(client, text, sourceGuild, targetWebhookUrl) {
   if (!text) return text;
 
+  const hasDiscordUrl = /https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/channels\/\d+\/\d+\/\d+/.test(text);
   const hasRoleMention = text.includes('<@&');
   const hasChannelMention = text.includes('<#');
   const hasUserMention = /<@!?\d+>/.test(text);
 
-  if (!hasRoleMention && !hasChannelMention && !hasUserMention) return text;
+  if (!hasDiscordUrl && !hasRoleMention && !hasChannelMention && !hasUserMention) return text;
 
   let newText = text;
 
+  // Temukan target guild dari webhook
   let targetGuild = null;
+  let webhookInfo = null;
   if (targetWebhookUrl) {
-    const targetGuildId = await getDcWebhookGuildId(targetWebhookUrl);
-    if (targetGuildId) {
-      targetGuild = client.guilds?.cache?.get(targetGuildId) || null;
+    webhookInfo = await getDcWebhookInfo(targetWebhookUrl);
+    if (webhookInfo?.guildId) {
+      targetGuild = discordRegistry.findGuild(webhookInfo.guildId) || client.guilds?.cache?.get(webhookInfo.guildId) || null;
     }
   }
 
-  const normalize = (str) => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  // 1. TERJEMAHKAN DISCORD MESSAGE URL: https://discord.com/channels/{guildId}/{channelId}/{messageId}
+  if (hasDiscordUrl) {
+    const urlMatches = [...newText.matchAll(/https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/channels\/(\d+)\/(\d+)\/(\d+)/g)];
+    for (let i = urlMatches.length - 1; i >= 0; i--) {
+      const match = urlMatches[i];
+      const sourceGuildId = match[1];
+      const sourceChannelId = match[2];
+      const sourceMsgId = match[3];
 
-  // 1. TERJEMAHKAN CHANNEL & THREAD MENTIONS: <#channelId>
+      const index = match.index;
+      const length = match[0].length;
+      const isInsideMarkdownLink = index > 0 && newText[index - 1] === '(';
+
+      let sourceChannel = sourceGuild?.channels?.cache?.get(sourceChannelId) ||
+                          await discordRegistry.findChannel(sourceChannelId);
+
+      let parent = null;
+      if (sourceChannel) {
+        const isThread = (typeof sourceChannel.isThread === 'function' && sourceChannel.isThread()) ||
+                         [10, 11, 12, 'GUILD_NEWS_THREAD', 'GUILD_PUBLIC_THREAD', 'GUILD_PRIVATE_THREAD'].includes(sourceChannel.type);
+        if (isThread) {
+          parent = sourceChannel.parent || (sourceChannel.parentId ? (sourceGuild?.channels?.cache?.get(sourceChannel.parentId) || await discordRegistry.findChannel(sourceChannel.parentId)) : null);
+        }
+      }
+
+      const channelDisplayName = parent 
+        ? `${parent.name} › ${sourceChannel.name}`
+        : (sourceChannel?.name || 'channel');
+
+      let targetChannel = null;
+      if (targetGuild && sourceChannel) {
+        targetChannel = await findTargetChannel(sourceChannel, targetGuild, parent);
+      }
+
+      let replacement = '';
+
+      if (isInsideMarkdownLink) {
+        // Didalam markdown link seperti: [**Replying to Natts:**](URL)
+        if (targetChannel && targetGuild) {
+          const stored = messageStore.get(sourceMsgId);
+          const targetMsgId = stored?.dcMsgId || sourceMsgId;
+          replacement = `https://discord.com/channels/${targetGuild.id}/${targetChannel.id}/${targetMsgId}`;
+        } else {
+          replacement = match[0];
+        }
+      } else {
+        // Standalone URL di pesan
+        if (targetChannel) {
+          const stored = messageStore.get(sourceMsgId);
+          if (stored?.dcMsgId && targetGuild) {
+            replacement = `https://discord.com/channels/${targetGuild.id}/${targetChannel.id}/${stored.dcMsgId}`;
+          } else {
+            replacement = `<#${targetChannel.id}>`;
+          }
+        } else if (sourceChannel) {
+          replacement = `**# ${channelDisplayName}**`;
+        } else {
+          replacement = '';
+        }
+      }
+
+      newText = newText.slice(0, index) + replacement + newText.slice(index + length);
+    }
+  }
+
+  // 2. TERJEMAHKAN CHANNEL & THREAD MENTIONS: <#channelId>
   if (hasChannelMention) {
     const channelMatches = [...newText.matchAll(/<#(\d+)>/g)];
     for (let i = channelMatches.length - 1; i >= 0; i--) {
       const match = channelMatches[i];
       const sourceChannelId = match[1];
 
-      // Ambil channel / thread dari cache atau fetch
-      let sourceChannel = sourceGuild?.channels?.cache?.get(sourceChannelId) || client.channels?.cache?.get(sourceChannelId);
-      if (!sourceChannel) {
-        if (dcChannelCache.has(sourceChannelId)) {
-          sourceChannel = dcChannelCache.get(sourceChannelId);
-        } else {
-          try {
-            sourceChannel = await client.channels?.fetch(sourceChannelId).catch(() => null);
-            if (sourceChannel) dcChannelCache.set(sourceChannelId, sourceChannel);
-          } catch (_) {}
-        }
-      }
-
-      if (!sourceChannel) {
-        continue;
-      }
-
-      const isThread = (typeof sourceChannel.isThread === 'function' && sourceChannel.isThread()) ||
-                       [10, 11, 12, 'GUILD_NEWS_THREAD', 'GUILD_PUBLIC_THREAD', 'GUILD_PRIVATE_THREAD'].includes(sourceChannel.type);
+      let sourceChannel = sourceGuild?.channels?.cache?.get(sourceChannelId) ||
+                          await discordRegistry.findChannel(sourceChannelId);
 
       let parent = null;
-      if (isThread) {
-        parent = sourceChannel.parent || (sourceChannel.parentId ? (sourceGuild?.channels?.cache?.get(sourceChannel.parentId) || client.channels?.cache?.get(sourceChannel.parentId)) : null);
-        if (!parent && sourceChannel.parentId) {
-          try {
-            parent = await client.channels?.fetch(sourceChannel.parentId).catch(() => null);
-          } catch (_) {}
+      if (sourceChannel) {
+        const isThread = (typeof sourceChannel.isThread === 'function' && sourceChannel.isThread()) ||
+                         [10, 11, 12, 'GUILD_NEWS_THREAD', 'GUILD_PUBLIC_THREAD', 'GUILD_PRIVATE_THREAD'].includes(sourceChannel.type);
+        if (isThread) {
+          parent = sourceChannel.parent || (sourceChannel.parentId ? (sourceGuild?.channels?.cache?.get(sourceChannel.parentId) || await discordRegistry.findChannel(sourceChannel.parentId)) : null);
         }
       }
 
       const channelDisplayName = parent 
         ? `${parent.name} › ${sourceChannel.name}`
-        : sourceChannel.name;
+        : (sourceChannel?.name || 'channel');
 
-      // Cari channel / thread yang cocok di server tujuan jika ada
-      let targetChannelId = null;
-      if (targetGuild) {
-        const normSource = normalize(sourceChannel.name);
-        const normParent = parent ? normalize(parent.name) : '';
-
-        // 1. Exact match nama channel / thread atau parent
-        let targetChannel = targetGuild.channels?.cache?.find(c => 
-          c.name.toLowerCase() === sourceChannel.name.toLowerCase() ||
-          (parent && c.name.toLowerCase() === parent.name.toLowerCase())
-        );
-
-        // 2. Normalized match (tanpa emoji/karakter khusus)
-        if (!targetChannel) {
-          targetChannel = targetGuild.channels?.cache?.find(c => {
-            const normC = normalize(c.name);
-            return normC && (normC === normSource || (normParent && normC === normParent));
-          });
-        }
-
-        // 3. Fetch dari target guild jika belum lengkap di cache
-        if (!targetChannel) {
-          try {
-            const fetched = await targetGuild.channels?.fetch().catch(() => null);
-            if (fetched) {
-              targetChannel = fetched.find(c => c && (
-                c.name.toLowerCase() === sourceChannel.name.toLowerCase() ||
-                (parent && c.name.toLowerCase() === parent.name.toLowerCase()) ||
-                (normSource && normalize(c.name) === normSource) ||
-                (normParent && normalize(c.name) === normParent)
-              ));
-            }
-          } catch (_) {}
-        }
-
-        if (targetChannel) {
-          targetChannelId = targetChannel.id;
-        }
+      let targetChannel = null;
+      if (targetGuild && sourceChannel) {
+        targetChannel = await findTargetChannel(sourceChannel, targetGuild, parent);
       }
 
       const index = match.index;
       const length = match[0].length;
 
-      if (targetChannelId) {
-        // Ganti dengan Mention Channel di server tujuan
-        newText = newText.slice(0, index) + `<#${targetChannelId}>` + newText.slice(index + length);
-      } else {
-        // Jika tidak ada channel di server tujuan, tampilkan nama teks aslinya
-        // agar tidak menjadi #unknown
+      if (targetChannel) {
+        newText = newText.slice(0, index) + `<#${targetChannel.id}>` + newText.slice(index + length);
+      } else if (sourceChannel) {
         newText = newText.slice(0, index) + `**# ${channelDisplayName}**` + newText.slice(index + length);
+      } else {
+        newText = newText.slice(0, index) + `**# channel**` + newText.slice(index + length);
       }
     }
   }
 
-  // 2. TERJEMAHKAN ROLE MENTIONS: <@&roleId>
+  // 3. TERJEMAHKAN ROLE MENTIONS: <@&roleId>
   if (hasRoleMention) {
     const roleMatches = [...newText.matchAll(/<@&(\d+)>/g)];
     for (let i = roleMatches.length - 1; i >= 0; i--) {
       const match = roleMatches[i];
       const sourceRoleId = match[1];
 
-      const sourceRole = sourceGuild?.roles?.cache?.get(sourceRoleId);
-      if (!sourceRole) continue;
+      let sourceRole = sourceGuild?.roles?.cache?.get(sourceRoleId);
+      if (!sourceRole) {
+        try { sourceRole = await sourceGuild?.roles?.fetch(sourceRoleId).catch(() => null); } catch (_) {}
+      }
+
+      const index = match.index;
+      const length = match[0].length;
+
+      if (!sourceRole) {
+        newText = newText.slice(0, index) + `@role` + newText.slice(index + length);
+        continue;
+      }
 
       const roleName = sourceRole.name.toLowerCase();
       let targetRoleId = null;
 
       if (targetGuild) {
         let targetRole = targetGuild.roles?.cache?.find(r => r.name.toLowerCase() === roleName);
-        if (targetRole) {
-          targetRoleId = targetRole.id;
-        } else {
+        if (!targetRole) {
           try {
             const roles = await targetGuild.roles?.fetch().catch(() => null);
             targetRole = roles?.find(r => r.name.toLowerCase() === roleName);
-            if (targetRole) targetRoleId = targetRole.id;
           } catch (_) {}
         }
+        if (targetRole) targetRoleId = targetRole.id;
       }
-
-      const index = match.index;
-      const length = match[0].length;
 
       if (targetRoleId) {
         newText = newText.slice(0, index) + `<@&${targetRoleId}>` + newText.slice(index + length);
@@ -190,7 +268,7 @@ async function translateDcToDcMentions(client, text, sourceGuild, targetWebhookU
     }
   }
 
-  // 3. TERJEMAHKAN USER MENTIONS: <@userId> atau <@!userId>
+  // 4. TERJEMAHKAN USER MENTIONS: <@userId> atau <@!userId>
   if (hasUserMention) {
     const userMatches = [...newText.matchAll(/<@!?(\d+)>/g)];
     for (let i = userMatches.length - 1; i >= 0; i--) {
@@ -208,15 +286,12 @@ async function translateDcToDcMentions(client, text, sourceGuild, targetWebhookU
         }
       }
 
-      // Jika user tidak ada di server tujuan, jadikan @Nama agar tidak menjadi @unknown-user
       if (!userInTarget) {
         const sourceMember = sourceGuild?.members?.cache?.get(sourceUserId);
         const name = sourceMember?.displayName || sourceMember?.user?.username || client.users?.cache?.get(sourceUserId)?.username;
-        if (name) {
-          const index = match.index;
-          const length = match[0].length;
-          newText = newText.slice(0, index) + `@${name}` + newText.slice(index + length);
-        }
+        const index = match.index;
+        const length = match[0].length;
+        newText = newText.slice(0, index) + `@${name || 'user'}` + newText.slice(index + length);
       }
     }
   }
@@ -472,7 +547,7 @@ function makeLabel(message, botKey) {
 /**
  * Format kutipan pesan reply untuk Discord Webhook.
  */
-async function formatReplyQuote(message) {
+async function formatReplyQuote(message, targetGuildId, targetChannelId) {
   if (!message.reference?.messageId) return '';
   try {
     let refMsg = message.referencedMessage;
@@ -489,6 +564,16 @@ async function formatReplyQuote(message) {
       snippet = `[Embed: ${refMsg.embeds[0].title || refMsg.embeds[0].description || 'Info'}]`;
     }
     if (snippet.length > 90) snippet = snippet.substring(0, 87) + '...';
+
+    // Cek apakah pesan yang dibalas tersimpan di target DC
+    const storedRef = messageStore.get(message.reference.messageId);
+    let replyLink = '';
+    if (storedRef?.dcMsgId && targetGuildId && targetChannelId) {
+      replyLink = `https://discord.com/channels/${targetGuildId}/${targetChannelId}/${storedRef.dcMsgId}`;
+    }
+    if (replyLink) {
+      return `> ↩️ [**Membalas @${author}:**](${replyLink}) _"${snippet || '...'}"_\n\n`;
+    }
     return `> ↩️ **Membalas @${author}**: _"${snippet || '...'}"_\n\n`;
   } catch {
     return '';
@@ -585,7 +670,8 @@ async function doForward(message, target, tgManager, config, rateLimiter) {
       // Reply Quote Context
       const enableReplyQuote = process.env.DC_TO_DC_REPLY_QUOTE !== 'false';
       if (enableReplyQuote && message.reference?.messageId) {
-        const quoteHeader = await formatReplyQuote(message);
+        const wbInfo = await getDcWebhookInfo(dcWebhookUrl);
+        const quoteHeader = await formatReplyQuote(message, wbInfo?.guildId, wbInfo?.channelId);
         if (quoteHeader) {
           content = quoteHeader + content;
         }
@@ -1019,4 +1105,5 @@ module.exports = {
   handleReaction,
   formatReplyQuote,
   stripDiscordInvites,
+  translateDcToDcMentions,
 };

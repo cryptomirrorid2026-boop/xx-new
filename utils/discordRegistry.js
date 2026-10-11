@@ -9,7 +9,61 @@ class DiscordRegistry {
   constructor() {
     this.tags     = new Map(); // token string -> tag string (e.g. user#1234)
     this.statuses = new Map(); // token string -> status ('online' | 'connecting' | 'error')
-    this.errors   = new Map(); // token string -> error message string
+    this.clients  = [];        // Array of active Discord Client instances
+  }
+
+  /**
+   * Daftarkan client Discord yang aktif
+   * @param {object} client 
+   */
+  addClient(client) {
+    if (client && !this.clients.includes(client)) {
+      this.clients.push(client);
+    }
+  }
+
+  /**
+   * Dapatkan semua client Discord aktif
+   * @returns {Array}
+   */
+  getClients() {
+    return this.clients;
+  }
+
+  /**
+   * Cari guild di seluruh client yang terdaftar
+   * @param {string} guildId 
+   * @returns {object|null}
+   */
+  findGuild(guildId) {
+    if (!guildId) return null;
+    for (const c of this.clients) {
+      const g = c.guilds?.cache?.get(guildId);
+      if (g) return g;
+    }
+    return null;
+  }
+
+  /**
+   * Cari atau fetch channel/thread di seluruh client yang terdaftar
+   * @param {string} channelId 
+   * @returns {Promise<object|null>}
+   */
+  async findChannel(channelId) {
+    if (!channelId) return null;
+    // 1. Cek cache
+    for (const c of this.clients) {
+      const ch = c.channels?.cache?.get(channelId);
+      if (ch) return ch;
+    }
+    // 2. Fetch jika belum ada di cache
+    for (const c of this.clients) {
+      try {
+        const fetched = await c.channels?.fetch(channelId).catch(() => null);
+        if (fetched) return fetched;
+      } catch (_) {}
+    }
+    return null;
   }
 
   /**

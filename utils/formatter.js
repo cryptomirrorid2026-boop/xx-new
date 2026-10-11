@@ -43,6 +43,15 @@ function convertMentions(text, guild) {
     return '@role';
   });
 
+  // Discord message URLs: https://discord.com/channels/...
+  text = text.replace(/https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/channels\/\d+\/(\d+)\/\d+/g, (match, channelId) => {
+    if (guild) {
+      const ch = guild.channels?.cache.get(channelId);
+      if (ch) return `📌 #${ch.name}`;
+    }
+    return match;
+  });
+
   // Channel mentions: <#channelId>
   text = text.replace(/<#(\d+)>/g, (match, channelId) => {
     if (guild) {

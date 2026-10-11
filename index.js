@@ -324,6 +324,7 @@ discordTokens.forEach((token, idx) => {
   discordRegistry.setStatus(token, 'connecting');
 
   const client = new Client({ checkUpdate: false });
+  discordRegistry.addClient(client);
 
   client.once('ready', (c) => {
     logger.success(`Discord Akun #${accountNum} online: ${c.user.tag}`);
