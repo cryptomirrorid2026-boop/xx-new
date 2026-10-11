@@ -497,18 +497,42 @@ function registerTelegramCommands(tgManager, channelMap, config, channelStore = 
   });
 
   // ─── /dashboard ─────────────────────────────────────────────────────────────
-  pollingBot.onText(/^\/dashboard/, (msg) => {
+  pollingBot.onText(/^\/dashboard/, async (msg) => {
     if (!isAdminDM(msg)) return;
 
-    let tunnelData = {};
-    try {
-      const fs = require('fs');
-      const path = require('path');
-      const tunnelPath = path.join(__dirname, '..', 'data', 'tunnel.json');
-      if (fs.existsSync(tunnelPath)) {
-        tunnelData = JSON.parse(fs.readFileSync(tunnelPath, 'utf8'));
+    const fs = require('fs');
+    const path = require('path');
+    const tunnelPath = path.join(__dirname, '..', 'data', 'tunnel.json');
+    const tunnelScript = path.join(__dirname, '..', 'tunnel.js');
+
+    const readTunnelData = () => {
+      try {
+        if (fs.existsSync(tunnelPath)) {
+          return JSON.parse(fs.readFileSync(tunnelPath, 'utf8'));
+        }
+      } catch (_) {}
+      return {};
+    };
+
+    let tunnelData = readTunnelData();
+
+    // Jika tunnel data belum ada atau URL belum jadi, pastikan tunnel script dijalankan
+    if (!tunnelData.cloudflare && !tunnelData.ngrok) {
+      try {
+        if (fs.existsSync(tunnelScript)) {
+          const { fork } = require('child_process');
+          const tProc = fork(tunnelScript, [], { stdio: 'inherit' });
+          tProc.on('error', () => {});
+        }
+      } catch (_) {}
+
+      // Beri waktu tunggu responsif hingga 3 detik agar Cloudflare selesai menghubungkan
+      for (let i = 0; i < 6; i++) {
+        await new Promise((res) => setTimeout(res, 500));
+        tunnelData = readTunnelData();
+        if (tunnelData.cloudflare || tunnelData.ngrok) break;
       }
-    } catch (err) {}
+    }
 
     const cfUrl = tunnelData.cloudflare;
     const ngrokUrl = tunnelData.ngrok;

@@ -36,19 +36,6 @@ module.exports = {
         PORT: PORT,
         HEALTH_PORT: PORT
       }
-    },
-    {
-      name: TUNNEL_APP_NAME,
-      script: "tunnel.js",
-      watch: false,
-      autorestart: true,
-      max_restarts: 20,
-      restart_delay: 5000,
-      env: {
-        NODE_ENV: "production",
-        PORT: PORT,
-        HEALTH_PORT: PORT
-      }
     }
   ]
 };

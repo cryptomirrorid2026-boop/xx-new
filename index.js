@@ -270,22 +270,22 @@ const HEALTH_PORT = parseInt(process.env.PORT || process.env.HEALTH_PORT || '500
 if (ENABLE_WEB) {
   startWebServer(tgManager, channelMap, HEALTH_PORT, tg2dcStore);
 
-  // Otomatis aktifkan Tunnel (Ngrok / Cloudflare) hanya jika BUKAN di cloud dan BUKAN dikelola PM2
+  // Otomatis aktifkan Tunnel (Cloudflare + Ngrok)
   const isCloudEnv = Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RENDER || process.env.ENABLE_TUNNEL === 'false');
-  const isManagedByPM2 = Boolean(process.env.pm_id !== undefined);
 
   if (isCloudEnv) {
     logger.info('☁️ Cloud Environment terdeteksi (Railway/Render) — Tunnel dinonaktifkan (gunakan domain Railway).');
-  } else if (isManagedByPM2) {
-    logger.info('⚙️ PM2 terdeteksi — Tunnel process dikelola mandiri oleh PM2 (mencegah tabrakan ganda).');
   } else {
     try {
       const { fork } = require('child_process');
       const path = require('path');
       const tunnelScript = path.join(__dirname, 'tunnel.js');
       if (require('fs').existsSync(tunnelScript)) {
-        logger.info('🚀 Memulai Tunnel Process standalone (Ngrok / Cloudflare)...');
-        fork(tunnelScript, [], { stdio: 'inherit' });
+        logger.info('🚀 Memulai Tunnel Process (Cloudflare + Ngrok)...');
+        const tProc = fork(tunnelScript, [], { stdio: 'inherit' });
+        tProc.on('error', (err) => {
+          logger.warn('Tunnel process error:', err.message);
+        });
       }
     } catch (err) {
       logger.warn('Gagal memulai tunnel process:', err.message);

@@ -3,12 +3,36 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ override: true });
 
+// ─── Single-Instance Guard (Mencegah Instance Tunnel Ganda) ───────────────────
+const dataPath = path.join(__dirname, 'data');
+if (!fs.existsSync(dataPath)) fs.mkdirSync(dataPath, { recursive: true });
+const pidPath = path.join(dataPath, 'tunnel.pid');
+
+try {
+  if (fs.existsSync(pidPath)) {
+    const existingPid = parseInt(fs.readFileSync(pidPath, 'utf8').trim());
+    if (existingPid && existingPid !== process.pid) {
+      try {
+        process.kill(existingPid, 0); // Jika tidak throw error, proses masih hidup
+        console.log(`[Tunnel] Instance tunnel lain sudah aktif (PID ${existingPid}). Instance ini selesai.`);
+        process.exit(0);
+      } catch (_) {
+        // PID sebelumnya sudah mati, boleh lanjut
+      }
+    }
+  }
+} catch (_) {}
+
+try {
+  fs.writeFileSync(pidPath, String(process.pid));
+} catch (_) {}
+
 // ─── Deteksi Port Otomatis (Anti-Tabrakan Port) ────────────────────────────────
 function getTargetPort() {
-  const dataPath = path.join(__dirname, 'data', 'web-port.json');
+  const portFile = path.join(dataPath, 'web-port.json');
   try {
-    if (fs.existsSync(dataPath)) {
-      const portInfo = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+    if (fs.existsSync(portFile)) {
+      const portInfo = JSON.parse(fs.readFileSync(portFile, 'utf8'));
       if (portInfo && portInfo.port) {
         return String(portInfo.port);
       }
@@ -26,7 +50,6 @@ const ngrokToken = process.env.NGROK_AUTHTOKEN || process.env.NGROK_TOKEN;
 const ngrokDomain = process.env.NGROK_DOMAIN;
 const cfToken = process.env.TUNNEL_TOKEN || process.env.CLOUDFLARE_TUNNEL_TOKEN;
 
-// Mode default: 'both' menjalankan Cloudflare & Ngrok berdampingan
 const shouldRunCloudflare = (providerConfig === 'both' || providerConfig === 'all' || providerConfig === 'cloudflare') && process.env.ENABLE_CLOUDFLARE_TUNNEL !== 'false';
 const shouldRunNgrok = (providerConfig === 'both' || providerConfig === 'all' || providerConfig === 'ngrok') && Boolean(ngrokToken || process.env.ENABLE_NGROK_TUNNEL === 'true');
 
@@ -44,21 +67,18 @@ const tunnelState = {
 
 let lastSavedUrl = '';
 function saveTunnelState() {
-  // Cloudflare diutamakan sebagai URL utama karena 100% bebas bentrok
   const primaryUrl = tunnelState.cloudflare || tunnelState.ngrok || tunnelState.local;
   tunnelState.url = primaryUrl;
   tunnelState.updatedAt = new Date().toISOString();
-
-  const dataPath = path.join(__dirname, 'data');
-  if (!fs.existsSync(dataPath)) fs.mkdirSync(dataPath, { recursive: true });
 
   fs.writeFileSync(
     path.join(dataPath, 'tunnel.json'),
     JSON.stringify(tunnelState, null, 2)
   );
 
-  if (lastSavedUrl !== `${tunnelState.cloudflare}|${tunnelState.ngrok}|${tunnelState.ngrokStatus}`) {
-    lastSavedUrl = `${tunnelState.cloudflare}|${tunnelState.ngrok}|${tunnelState.ngrokStatus}`;
+  const currentSummary = `${tunnelState.cloudflare}|${tunnelState.ngrok}|${tunnelState.ngrokStatus}|${tunnelState.cfStatus}`;
+  if (lastSavedUrl !== currentSummary) {
+    lastSavedUrl = currentSummary;
     printBanner();
   }
 }
@@ -85,19 +105,37 @@ function printBanner() {
   console.log('============================================================\n');
 }
 
-// ─── 1. Cloudflare Tunnel Process (Anti-Tabrakan & Bebas Kuota) ────────────────
+// ─── 1. Cloudflare Tunnel Process (Anti-Tabrakan & Cepat) ─────────────────────
 let cfProcess = null;
 let cfRestartTimeout = null;
 
-function startCloudflareTunnel() {
-  if (!shouldRunCloudflare) return;
+function getCloudflareExecutable() {
+  // 1. Coba gunakan binary langsung dari node_modules (Super cepat, tanpa npx overhead)
+  try {
+    const cfPackage = require('cloudflared');
+    if (cfPackage && cfPackage.bin && fs.existsSync(cfPackage.bin)) {
+      return { cmd: cfPackage.bin, argsPrefix: [] };
+    }
+  } catch (_) {}
 
-  const cfArgs = cfToken
-    ? ['-y', 'cloudflared', 'tunnel', '--no-autoupdate', 'run', '--token', cfToken]
-    : ['-y', 'cloudflared', 'tunnel', '--url', `http://localhost:${targetPort}`];
+  // 2. Fallback ke npx jika binary lokal tidak ditemukan
+  return { cmd: npxCmd, argsPrefix: ['-y', 'cloudflared'] };
+}
+
+function startCloudflareTunnel() {
+  if (!shouldRunCloudflare || isShuttingDown) return;
+
+  const { cmd, argsPrefix } = getCloudflareExecutable();
+  const cfArgs = [...argsPrefix, 'tunnel'];
+
+  if (cfToken) {
+    cfArgs.push('--no-autoupdate', 'run', '--token', cfToken);
+  } else {
+    cfArgs.push('--url', `http://localhost:${targetPort}`);
+  }
 
   console.log(`☁️ Memulai Cloudflare Tunnel (Target: http://localhost:${targetPort})...`);
-  cfProcess = spawn(npxCmd, cfArgs, { shell: true });
+  cfProcess = spawn(cmd, cfArgs, { shell: true });
 
   const handleCfOutput = (data) => {
     const text = data.toString();
@@ -115,6 +153,10 @@ function startCloudflareTunnel() {
   cfProcess.stdout.on('data', handleCfOutput);
   cfProcess.stderr.on('data', handleCfOutput);
 
+  cfProcess.on('error', (err) => {
+    console.warn(`⚠️ [Cloudflare Error]: ${err.message}`);
+  });
+
   cfProcess.on('close', (code) => {
     if (isShuttingDown) return;
     console.log(`[Cloudflare] Process exit with code ${code}. Merestart dalam 5 detik...`);
@@ -129,7 +171,7 @@ let ngrokProcess = null;
 let ngrokRestartTimeout = null;
 
 function startNgrokTunnel() {
-  if (!shouldRunNgrok) return;
+  if (!shouldRunNgrok || isShuttingDown) return;
 
   const ngrokArgs = ['-y', 'ngrok', 'http', targetPort];
   if (ngrokToken) {
@@ -146,7 +188,7 @@ function startNgrokTunnel() {
   const handleNgrokOutput = (data) => {
     const text = data.toString();
 
-    // Deteksi bentrok dengan project lain (misal domain dipakai Store)
+    // Deteksi jika domain/session sedang dipakai oleh project Store
     if (text.includes('ERR_NGROK_334') || text.includes('already online') || text.includes('ERR_NGROK_324')) {
       if (tunnelState.ngrokStatus !== 'conflict') {
         tunnelState.ngrokStatus = 'conflict';
@@ -172,10 +214,13 @@ function startNgrokTunnel() {
   ngrokProcess.stdout.on('data', handleNgrokOutput);
   ngrokProcess.stderr.on('data', handleNgrokOutput);
 
+  ngrokProcess.on('error', (err) => {
+    console.warn(`⚠️ [Ngrok Error]: ${err.message}`);
+  });
+
   ngrokProcess.on('close', (code) => {
     if (isShuttingDown) return;
-    // Jika bentrok, tunggu 45 detik sebelum mencoba lagi agar tidak membebani sistem
-    const delay = tunnelState.ngrokStatus === 'conflict' ? 45000 : 8000;
+    const delay = tunnelState.ngrokStatus === 'conflict' ? 60000 : 10000;
     console.log(`[Ngrok] Process exit with code ${code}. Coba lagi dalam ${Math.round(delay / 1000)} detik...`);
     tunnelState.ngrok = null;
     saveTunnelState();
@@ -202,6 +247,9 @@ function cleanup() {
   if (ngrokProcess) {
     try { ngrokProcess.kill(); } catch (_) {}
   }
+  try {
+    if (fs.existsSync(pidPath)) fs.unlinkSync(pidPath);
+  } catch (_) {}
   process.exit(0);
 }
 
