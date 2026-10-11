@@ -3,6 +3,8 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ override: true });
 
+let isShuttingDown = false;
+
 // ─── Single-Instance Guard (Mencegah Instance Tunnel Ganda) ───────────────────
 const dataPath = path.join(__dirname, 'data');
 if (!fs.existsSync(dataPath)) fs.mkdirSync(dataPath, { recursive: true });
@@ -50,8 +52,10 @@ const ngrokToken = process.env.NGROK_AUTHTOKEN || process.env.NGROK_TOKEN;
 const ngrokDomain = process.env.NGROK_DOMAIN;
 const cfToken = process.env.TUNNEL_TOKEN || process.env.CLOUDFLARE_TUNNEL_TOKEN;
 
-const shouldRunCloudflare = (providerConfig === 'both' || providerConfig === 'all' || providerConfig === 'cloudflare') && process.env.ENABLE_CLOUDFLARE_TUNNEL !== 'false';
-const shouldRunNgrok = (providerConfig === 'both' || providerConfig === 'all' || providerConfig === 'ngrok') && Boolean(ngrokToken || process.env.ENABLE_NGROK_TUNNEL === 'true');
+// Cloudflare diaktifkan secara default (ANTI-BENTROK) terlepas dari settingan lama di .env
+const shouldRunCloudflare = process.env.ENABLE_CLOUDFLARE !== 'false' && process.env.ENABLE_CLOUDFLARE_TUNNEL !== 'false';
+// Ngrok aktif jika token tersedia dan tidak dimatikan secara eksplisit
+const shouldRunNgrok = Boolean(ngrokToken) && process.env.ENABLE_NGROK !== 'false';
 
 // ─── Status Tunnel ─────────────────────────────────────────────────────────────
 const tunnelState = {
@@ -110,22 +114,25 @@ let cfProcess = null;
 let cfRestartTimeout = null;
 
 function getCloudflareExecutable() {
-  // 1. Coba gunakan binary langsung dari node_modules (Super cepat, tanpa npx overhead)
+  // 1. Coba gunakan binary langsung dari node_modules (Super cepat, aman untuk path berspasi)
   try {
     const cfPackage = require('cloudflared');
     if (cfPackage && cfPackage.bin && fs.existsSync(cfPackage.bin)) {
-      return { cmd: cfPackage.bin, argsPrefix: [] };
+      if (process.platform !== 'win32') {
+        try { fs.chmodSync(cfPackage.bin, 0o755); } catch (_) {}
+      }
+      return { cmd: cfPackage.bin, argsPrefix: [], useShell: false };
     }
   } catch (_) {}
 
   // 2. Fallback ke npx jika binary lokal tidak ditemukan
-  return { cmd: npxCmd, argsPrefix: ['-y', 'cloudflared'] };
+  return { cmd: npxCmd, argsPrefix: ['-y', 'cloudflared'], useShell: true };
 }
 
 function startCloudflareTunnel() {
   if (!shouldRunCloudflare || isShuttingDown) return;
 
-  const { cmd, argsPrefix } = getCloudflareExecutable();
+  const { cmd, argsPrefix, useShell } = getCloudflareExecutable();
   const cfArgs = [...argsPrefix, 'tunnel'];
 
   if (cfToken) {
@@ -135,7 +142,7 @@ function startCloudflareTunnel() {
   }
 
   console.log(`☁️ Memulai Cloudflare Tunnel (Target: http://localhost:${targetPort})...`);
-  cfProcess = spawn(cmd, cfArgs, { shell: true });
+  cfProcess = spawn(cmd, cfArgs, { shell: useShell });
 
   const handleCfOutput = (data) => {
     const text = data.toString();
@@ -234,7 +241,6 @@ if (shouldRunCloudflare) startCloudflareTunnel();
 if (shouldRunNgrok) startNgrokTunnel();
 
 // ─── Pembersihan Saat Aplikasi Berhenti ────────────────────────────────────────
-let isShuttingDown = false;
 function cleanup() {
   if (isShuttingDown) return;
   isShuttingDown = true;

@@ -68,6 +68,8 @@ tmp/
 # Mengabaikannya mencegah merge conflict dan melindungi webhook Discord
 data/*.json
 !data/*.example.json
+data/*.pid
+*.pid
 
 # ─── 6. AI MODELS & HEAVY ASSETS (ON-DEMAND) ────────────────
 data/models/

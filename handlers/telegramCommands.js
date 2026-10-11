@@ -573,6 +573,63 @@ function registerTelegramCommands(tgManager, channelMap, config, channelStore = 
     logger.bot('Admin request: /dashboard');
   });
 
+  // ─── /fixtunnel (Force Restart Tunnel & Diagnostic) ─────────────────────────
+  pollingBot.onText(/^\/fixtunnel/, async (msg) => {
+    if (!isAdminDM(msg)) return;
+
+    reply(msg.chat.id, '🔄 <i>Memulai ulang Cloudflare & Ngrok Tunnel secara paksa...</i>');
+
+    const fs = require('fs');
+    const path = require('path');
+    const { fork } = require('child_process');
+
+    const dataDir = path.join(__dirname, '..', 'data');
+    const pidPath = path.join(dataDir, 'tunnel.pid');
+    const tunnelPath = path.join(dataDir, 'tunnel.json');
+    const tunnelScript = path.join(__dirname, '..', 'tunnel.js');
+
+    try {
+      if (fs.existsSync(pidPath)) {
+        const oldPid = parseInt(fs.readFileSync(pidPath, 'utf8').trim());
+        if (oldPid) {
+          try { process.kill(oldPid); } catch (_) {}
+        }
+        fs.unlinkSync(pidPath);
+      }
+    } catch (_) {}
+
+    try {
+      fork(tunnelScript, [], { stdio: 'inherit' });
+    } catch (err) {
+      reply(msg.chat.id, `❌ Gagal menjalankan tunnel.js: ${err.message}`);
+      return;
+    }
+
+    // Tunggu hingga 4 detik
+    for (let i = 0; i < 8; i++) {
+      await new Promise(r => setTimeout(r, 500));
+      try {
+        if (fs.existsSync(tunnelPath)) {
+          const d = JSON.parse(fs.readFileSync(tunnelPath, 'utf8'));
+          if (d.cloudflare || d.ngrok) break;
+        }
+      } catch (_) {}
+    }
+
+    let resultData = {};
+    try {
+      if (fs.existsSync(tunnelPath)) resultData = JSON.parse(fs.readFileSync(tunnelPath, 'utf8'));
+    } catch (_) {}
+
+    reply(msg.chat.id, [
+      `✅ <b>Status Tunnel Terbaru:</b>`,
+      ``,
+      `☁️ Cloudflare: ${resultData.cloudflare ? `<a href="${resultData.cloudflare}">${resultData.cloudflare}</a>` : '<i>Sedang proses...</i>'}`,
+      `🚇 Ngrok: ${resultData.ngrok ? `<a href="${resultData.ngrok}">${resultData.ngrok}</a>` : (resultData.ngrokStatus === 'conflict' ? '⚠️ Bentrok dengan Store' : '<i>Menghubungkan...</i>')}`,
+      `🏠 Port Lokal: ${resultData.port || 5005}`
+    ].join('\n'));
+  });
+
   // ─── /ai [on|off] or /ocr [on|off] ──────────────────────────────────────────
   pollingBot.onText(/^\/(?:ai|ocr)(?:\s+(on|off|status))?/i, (msg, match) => {
     if (!isAdminDM(msg)) return;
