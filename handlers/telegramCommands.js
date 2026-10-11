@@ -534,9 +534,9 @@ function registerTelegramCommands(tgManager, channelMap, config, channelStore = 
       }
     }
 
-    const cfUrl = tunnelData.cloudflare;
-    const ngrokUrl = tunnelData.ngrok;
-    const localPort = tunnelData.port || process.env.HEALTH_PORT || process.env.PORT || '5005';
+    let rawLocalPort = tunnelData.port || process.env.HEALTH_PORT || process.env.PORT || '5080';
+    if (String(rawLocalPort) === '5005' || String(rawLocalPort) === '3000') rawLocalPort = '5080';
+    const localPort = rawLocalPort;
     const ngrokStatus = tunnelData.ngrokStatus;
 
     let cfText = cfUrl 
@@ -626,7 +626,7 @@ function registerTelegramCommands(tgManager, channelMap, config, channelStore = 
       ``,
       `☁️ Cloudflare: ${resultData.cloudflare ? `<a href="${resultData.cloudflare}">${resultData.cloudflare}</a>` : '<i>Sedang proses...</i>'}`,
       `🚇 Ngrok: ${resultData.ngrok ? `<a href="${resultData.ngrok}">${resultData.ngrok}</a>` : (resultData.ngrokStatus === 'conflict' ? '⚠️ Bentrok dengan Store' : '<i>Menghubungkan...</i>')}`,
-      `🏠 Port Lokal: ${resultData.port || 5005}`
+      `🏠 Port Lokal: ${(resultData.port && resultData.port !== 5005 && resultData.port !== 3000) ? resultData.port : 5080}`
     ].join('\n'));
   });
 

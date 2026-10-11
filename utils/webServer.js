@@ -84,7 +84,12 @@ function pushEvent(type, message) {
 }
 
 // ─── Main ────────────────────────────────────────────────────
-function startWebServer(tgManager, channelMap, port = 5005, tg2dcStore = null) {
+function startWebServer(tgManager, channelMap, port = 5080, tg2dcStore = null) {
+  // Proteksi mutlak: port 5005 & 3000 dipakai oleh project Store / Jurnal
+  if (port === 5005 || port === 3000) {
+    logger.warn(`⚠️ Port ${port} dialokasikan untuk project Store! Mengalihkan dashboard ke port aman 5080.`);
+    port = 5080;
+  }
   const app = express();
   app.use(cors());
   app.use(express.json());

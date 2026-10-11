@@ -12,8 +12,8 @@ try {
 
 // Konfigurasi Dinamis dari .env (Anti-Tabrakan Port & Nama Proses)
 const APP_NAME = process.env.PM2_APP_NAME || "discord-to-telegram-mirror";
-const PORT = process.env.PORT || process.env.HEALTH_PORT || "5005";
-const TUNNEL_APP_NAME = process.env.PM2_TUNNEL_NAME || `${APP_NAME}-tunnel`;
+let PORT = process.env.PORT || process.env.HEALTH_PORT || "5080";
+if (PORT === "5005" || PORT === "3000") PORT = "5080";
 const MAX_RAM = process.env.MAX_RAM_MB ? `${process.env.MAX_RAM_MB}M` : "550M";
 
 module.exports = {

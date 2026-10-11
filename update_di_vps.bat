@@ -92,6 +92,16 @@ echo [OK] Pustaka dependensi up-to-date.
 :: 5. Me-restart proses PM2 dengan flag --update-env
 echo.
 echo [5/6] Me-restart proses PM2 dengan konfigurasi terbaru (--update-env)...
+
+:: Migrasi otomatis .env jika masih memakai port 5005 (port bentrok Store)
+if exist ".env" (
+    powershell -NoProfile -Command "if (Test-Path '.env') { (Get-Content '.env' -Raw) -replace 'PORT=5005','PORT=5080' -replace 'HEALTH_PORT=5005','HEALTH_PORT=5080' -replace 'TUNNEL_PROVIDER=ngrok','TUNNEL_PROVIDER=both' | Set-Content '.env' }" >nul 2>&1
+)
+
+:: Bersihkan proses tunnel terpisah di PM2 jika ada (kini dikelola langsung oleh bot)
+call %PM2_CMD% delete discord-to-telegram-mirror-tunnel >nul 2>&1
+call %PM2_CMD% delete nexus-dashboard-tunnel >nul 2>&1
+
 call %PM2_CMD% restart ecosystem.config.js --update-env >nul 2>&1
 if %errorlevel% neq 0 (
     echo [INFO] Proses belum terdaftar di PM2. Memulai proses baru...
@@ -124,7 +134,7 @@ call %PM2_CMD% status
 echo ----------------------------------------------------------------
 echo.
 echo Catatan:
-echo - Dashboard dapat diakses di: http://localhost:5005 (atau IP VPS:5005)
+echo - Dashboard dapat diakses di: http://localhost:5080 (atau IP VPS:5080)
 echo - Data pelanggan/transaksi di SQLite tetap utuh dan aman.
 echo - Cek log real-time bot dengan: pm2 logs
 echo ================================================================

@@ -35,12 +35,16 @@ function getTargetPort() {
   try {
     if (fs.existsSync(portFile)) {
       const portInfo = JSON.parse(fs.readFileSync(portFile, 'utf8'));
-      if (portInfo && portInfo.port) {
+      if (portInfo && portInfo.port && portInfo.port !== 5005 && portInfo.port !== 3000) {
         return String(portInfo.port);
       }
     }
   } catch (_) {}
-  return String(process.env.HEALTH_PORT || process.env.PORT || '5005');
+  const rawPort = String(process.env.HEALTH_PORT || process.env.PORT || '5080');
+  if (rawPort === '5005' || rawPort === '3000') {
+    return '5080';
+  }
+  return rawPort;
 }
 
 const targetPort = getTargetPort();
