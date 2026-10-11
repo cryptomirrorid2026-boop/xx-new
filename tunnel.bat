@@ -1,2 +1,5 @@
 @echo off
-npx localtunnel --port 3000 --subdomain nexus-dashboard-elit
+title Nexus Mirror Bot Tunnel (Cloudflare + Ngrok)
+cd /d "%~dp0"
+node tunnel.js
+pause

@@ -84,7 +84,7 @@ function pushEvent(type, message) {
 }
 
 // ─── Main ────────────────────────────────────────────────────
-function startWebServer(tgManager, channelMap, port = 3000, tg2dcStore = null) {
+function startWebServer(tgManager, channelMap, port = 5005, tg2dcStore = null) {
   const app = express();
   app.use(cors());
   app.use(express.json());
@@ -758,18 +758,36 @@ function startWebServer(tgManager, channelMap, port = 3000, tg2dcStore = null) {
     setTimeout(() => process.exit(exitCode), 1000);
   });
 
+  // ── Health Check Endpoint ──────────────────────────────────
+  app.get('/api/health', (_, res) => {
+    res.json({
+      status: 'ok',
+      service: 'Nexus Mirror Bot Dashboard',
+      port,
+      timestamp: new Date().toISOString()
+    });
+  });
+
   // ── Fallback SPA ─────────────────────────────────────────────
   app.use((_, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
 
-  const server = app.listen(port, '0.0.0.0', () =>
-    logger.success('🌐 Dashboard & API aktif di', `http://0.0.0.0:${port}`)
-  );
+  const server = app.listen(port, '0.0.0.0', () => {
+    logger.success('🌐 Dashboard & API aktif di', `http://0.0.0.0:${port}`);
+    try {
+      const dataDir = path.join(__dirname, '..', 'data');
+      if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dataDir, 'web-port.json'),
+        JSON.stringify({ port, updatedAt: new Date().toISOString() }, null, 2)
+      );
+    } catch (_) {}
+  });
 
   server.on('error', err => {
     if (err.code === 'EADDRINUSE') {
-      logger.warn(`Port ${port} dipakai, coba ${port + 1}`);
+      logger.warn(`⚠️ Port ${port} sedang dipakai project lain! Mengalihkan ke port ${port + 1}...`);
       server.close();
-      startWebServer(tgManager, channelMap, port + 1);
+      startWebServer(tgManager, channelMap, port + 1, tg2dcStore);
     } else logger.error('Web server error', err.message);
   });
 

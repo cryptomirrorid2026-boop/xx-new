@@ -266,13 +266,13 @@ registerTelegramCommands(tgManager, channelMap, config, channelStore, tg2dcStore
 
 // ─── Health Check HTTP Server / Web Dashboard ────────────────────────────────
 const ENABLE_WEB = process.env.ENABLE_WEB_SERVER !== 'false';
-const HEALTH_PORT = parseInt(process.env.PORT || process.env.HEALTH_PORT || '5000');
+const HEALTH_PORT = parseInt(process.env.PORT || process.env.HEALTH_PORT || '5005');
 if (ENABLE_WEB) {
   startWebServer(tgManager, channelMap, HEALTH_PORT, tg2dcStore);
 
   // Otomatis aktifkan Tunnel (Ngrok / Cloudflare) hanya jika BUKAN di cloud dan BUKAN dikelola PM2
   const isCloudEnv = Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RENDER || process.env.ENABLE_TUNNEL === 'false');
-  const isManagedByPM2 = Boolean(process.env.pm_id !== undefined || process.env.PM2_HOME);
+  const isManagedByPM2 = Boolean(process.env.pm_id !== undefined);
 
   if (isCloudEnv) {
     logger.info('☁️ Cloud Environment terdeteksi (Railway/Render) — Tunnel dinonaktifkan (gunakan domain Railway).');
