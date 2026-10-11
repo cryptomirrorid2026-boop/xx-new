@@ -65,6 +65,10 @@ function registerTelegramCommands(tgManager, channelMap, config, channelStore = 
     let lastPollingWarnTime = 0;
     let lastPollingWarnMsg = '';
 
+    pollingBot.on('error', (err) => {
+      logger.warn('Telegram Bot general hiccup:', err.message || String(err));
+    });
+
     pollingBot.on('polling_error', (err) => {
       // Tangkap polling error agar tidak crash uncaught exception
       const msg = err.message || String(err);
@@ -500,77 +504,84 @@ function registerTelegramCommands(tgManager, channelMap, config, channelStore = 
   pollingBot.onText(/^\/dashboard/, async (msg) => {
     if (!isAdminDM(msg)) return;
 
-    const fs = require('fs');
-    const path = require('path');
-    const tunnelPath = path.join(__dirname, '..', 'data', 'tunnel.json');
-    const tunnelScript = path.join(__dirname, '..', 'tunnel.js');
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const tunnelPath = path.join(__dirname, '..', 'data', 'tunnel.json');
+      const tunnelScript = path.join(__dirname, '..', 'tunnel.js');
 
-    const readTunnelData = () => {
-      try {
-        if (fs.existsSync(tunnelPath)) {
-          return JSON.parse(fs.readFileSync(tunnelPath, 'utf8'));
+      const readTunnelData = () => {
+        try {
+          if (fs.existsSync(tunnelPath)) {
+            return JSON.parse(fs.readFileSync(tunnelPath, 'utf8'));
+          }
+        } catch (_) {}
+        return {};
+      };
+
+      let tunnelData = readTunnelData();
+
+      // Jika tunnel data belum ada atau URL belum jadi, pastikan tunnel script dijalankan
+      if (!tunnelData.cloudflare && !tunnelData.ngrok) {
+        try {
+          if (fs.existsSync(tunnelScript)) {
+            const { fork } = require('child_process');
+            const tProc = fork(tunnelScript, [], { stdio: 'inherit' });
+            tProc.on('error', () => {});
+          }
+        } catch (_) {}
+
+        // Beri waktu tunggu responsif hingga 3 detik agar Cloudflare selesai menghubungkan
+        for (let i = 0; i < 6; i++) {
+          await new Promise((res) => setTimeout(res, 500));
+          tunnelData = readTunnelData();
+          if (tunnelData.cloudflare || tunnelData.ngrok) break;
         }
-      } catch (_) {}
-      return {};
-    };
-
-    let tunnelData = readTunnelData();
-
-    // Jika tunnel data belum ada atau URL belum jadi, pastikan tunnel script dijalankan
-    if (!tunnelData.cloudflare && !tunnelData.ngrok) {
-      try {
-        if (fs.existsSync(tunnelScript)) {
-          const { fork } = require('child_process');
-          const tProc = fork(tunnelScript, [], { stdio: 'inherit' });
-          tProc.on('error', () => {});
-        }
-      } catch (_) {}
-
-      // Beri waktu tunggu responsif hingga 3 detik agar Cloudflare selesai menghubungkan
-      for (let i = 0; i < 6; i++) {
-        await new Promise((res) => setTimeout(res, 500));
-        tunnelData = readTunnelData();
-        if (tunnelData.cloudflare || tunnelData.ngrok) break;
       }
+
+      let rawLocalPort = tunnelData.port || process.env.HEALTH_PORT || process.env.PORT || '5080';
+      if (String(rawLocalPort) === '5005' || String(rawLocalPort) === '3000') rawLocalPort = '5080';
+      const localPort = rawLocalPort;
+      const ngrokStatus = tunnelData.ngrokStatus;
+      const cfUrl = tunnelData.cloudflare || null;
+      const ngrokUrl = tunnelData.ngrok || null;
+
+      let cfText = cfUrl 
+        ? `🔗 <a href="${cfUrl}">${cfUrl}</a>\n   <i>└ ✅ Cloudflare Tunnel (Bebas Tabrakan & Cepat)</i>`
+        : `⏳ <i>Sedang menghubungkan ke Cloudflare... (coba ketik /dashboard lagi dalam 5-10 detik)</i>`;
+
+      let ngrokText = '';
+      if (ngrokUrl) {
+        ngrokText = `🔗 <a href="${ngrokUrl}">${ngrokUrl}</a>\n   <i>└ ✅ Ngrok Tunnel Aktif</i>`;
+      } else if (ngrokStatus === 'conflict') {
+        ngrokText = `⚠️ <i>Sedang dipakai project Store Anda (ERR_NGROK_334).\nGunakan link Cloudflare di atas yang dijamin lancar tanpa bentrok!</i>`;
+      } else if (process.env.NGROK_AUTHTOKEN || process.env.NGROK_TOKEN) {
+        ngrokText = `⏳ <i>Sedang menghubungkan / mencoba koneksi Ngrok...</i>`;
+      } else {
+        ngrokText = `ℹ️ <i>Tidak dikonfigurasi di .env</i>`;
+      }
+
+      reply(msg.chat.id, [
+        `🌐 <b>WEB DASHBOARD MIRROR BOT</b>`,
+        ``,
+        `☁️ <b>LINK CLOUDFLARE (UTAMA & BEBAS BENTROK):</b>`,
+        cfText,
+        ``,
+        `🚇 <b>LINK NGROK:</b>`,
+        ngrokText,
+        ``,
+        `🏠 <b>AKSES LOKAL / VPS:</b>`,
+        `🔗 <code>http://localhost:${localPort}</code>`,
+        ``,
+        `💡 <i>Tips Anti-Tabrakan:</i>`,
+        `• Link Cloudflare 100% terisolasi & tidak akan pernah tertabrak project Store Anda.`,
+        `• Jika bot di-restart, gunakan <code>/dashboard</code> lagi untuk memperbarui link.`
+      ].join('\n'));
+      logger.bot('Admin request: /dashboard');
+    } catch (err) {
+      logger.error('Error /dashboard command:', err.message);
+      reply(msg.chat.id, `❌ Terjadi kesalahan membuka dashboard: ${err.message}`);
     }
-
-    let rawLocalPort = tunnelData.port || process.env.HEALTH_PORT || process.env.PORT || '5080';
-    if (String(rawLocalPort) === '5005' || String(rawLocalPort) === '3000') rawLocalPort = '5080';
-    const localPort = rawLocalPort;
-    const ngrokStatus = tunnelData.ngrokStatus;
-
-    let cfText = cfUrl 
-      ? `🔗 <a href="${cfUrl}">${cfUrl}</a>\n   <i>└ ✅ Cloudflare Tunnel (Bebas Tabrakan & Cepat)</i>`
-      : `⏳ <i>Sedang menghubungkan ke Cloudflare... (coba ketik /dashboard lagi dalam 5-10 detik)</i>`;
-
-    let ngrokText = '';
-    if (ngrokUrl) {
-      ngrokText = `🔗 <a href="${ngrokUrl}">${ngrokUrl}</a>\n   <i>└ ✅ Ngrok Tunnel Aktif</i>`;
-    } else if (ngrokStatus === 'conflict') {
-      ngrokText = `⚠️ <i>Sedang dipakai project Store Anda (ERR_NGROK_334).\nGunakan link Cloudflare di atas yang dijamin lancar tanpa bentrok!</i>`;
-    } else if (process.env.NGROK_AUTHTOKEN || process.env.NGROK_TOKEN) {
-      ngrokText = `⏳ <i>Sedang menghubungkan / mencoba koneksi Ngrok...</i>`;
-    } else {
-      ngrokText = `ℹ️ <i>Tidak dikonfigurasi di .env</i>`;
-    }
-
-    reply(msg.chat.id, [
-      `🌐 <b>WEB DASHBOARD MIRROR BOT</b>`,
-      ``,
-      `☁️ <b>LINK CLOUDFLARE (UTAMA & BEBAS BENTROK):</b>`,
-      cfText,
-      ``,
-      `🚇 <b>LINK NGROK:</b>`,
-      ngrokText,
-      ``,
-      `🏠 <b>AKSES LOKAL / VPS:</b>`,
-      `🔗 <code>http://localhost:${localPort}</code>`,
-      ``,
-      `💡 <i>Tips Anti-Tabrakan:</i>`,
-      `• Link Cloudflare 100% terisolasi & tidak akan pernah tertabrak project Store Anda.`,
-      `• Jika bot di-restart, gunakan <code>/dashboard</code> lagi untuk memperbarui link.`
-    ].join('\n'));
-    logger.bot('Admin request: /dashboard');
   });
 
   // ─── /fixtunnel (Force Restart Tunnel & Diagnostic) ─────────────────────────
@@ -1090,13 +1101,6 @@ function registerTelegramCommands(tgManager, channelMap, config, channelStore = 
       `📂 <b>Uptime Process:</b> ${(process.uptime() / 60).toFixed(1)} menit`,
     ].join('\n'));
     logger.bot('Admin request: /sysinfo');
-  });
-
-  // ─── Error handler polling ──────────────────────────────────────────────────
-  pollingBot.on('polling_error', (err) => {
-    if (err.code !== 'ETELEGRAM') {
-      logger.error('Polling bot error', err.message?.substring(0, 80));
-    }
   });
 }
 
