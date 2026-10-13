@@ -22,6 +22,8 @@ const watermarkManager  = require('./watermarkManager');
 const cropManager       = require('./cropManager');
 const blurManager       = require('./blurManager');
 const wordFilterManager = require('./wordFilterManager');
+const discordBotPool    = require('./discordBotPool');
+const autoLinkManager   = require('./autoLinkManager');
 
 // ─── Multer: Watermark upload ─────────────────────────────────
 const storage = multer.diskStorage({
@@ -82,6 +84,9 @@ function pushEvent(type, message) {
     try { res.write(data); } catch { sseClients.delete(res); }
   });
 }
+
+// Hubungkan autoLinkManager ke SSE activity pusher
+autoLinkManager.setPushEventFn(pushEvent);
 
 // ─── Main ────────────────────────────────────────────────────
 function startWebServer(tgManager, channelMap, port = 5080, tg2dcStore = null) {
@@ -255,7 +260,7 @@ function startWebServer(tgManager, channelMap, port = 5080, tg2dcStore = null) {
   });
 
   app.post('/api/channels', (req, res) => {
-    const { name, discordId, tgChatId, botKey, threadId, dcWebhookUrl, dcThreadId, dcCustomUsername, dcCustomAvatarUrl, dcAutoPing, dcOnlyWithMedia, dcStripInvites } = req.body;
+    const { name, discordId, tgChatId, botKey, threadId, dcWebhookUrl, dcThreadId, dcCustomUsername, dcCustomAvatarUrl, dcAutoPing, dcOnlyWithMedia, dcStripInvites, category } = req.body;
     if (!discordId)
       return res.status(400).json({ error: 'Discord ID is required' });
     if (!tgChatId && !dcWebhookUrl)
@@ -265,16 +270,17 @@ function startWebServer(tgManager, channelMap, port = 5080, tg2dcStore = null) {
       return res.status(400).json({ error: 'Discord ID is already mapped' });
 
     const ch = channelStore.add({ 
+      category: category || 'General',
       name, discordId, tgChatId: tgChatId || '', botKey: botKey || '1', threadId, dcWebhookUrl,
       dcThreadId, dcCustomUsername, dcCustomAvatarUrl, dcAutoPing, dcOnlyWithMedia, dcStripInvites 
     });
-    pushEvent('info', `Channel <b>${ch.name}</b> added via dashboard`);
+    pushEvent('info', `Channel <b>${ch.name}</b> (${ch.category}) added via dashboard`);
     res.json({ success: true, channel: ch });
   });
 
   app.put('/api/channels/:id', (req, res) => {
     const oldId = req.params.id;
-    const { name, discordId, tgChatId, botKey, threadId, dcWebhookUrl, dcThreadId, dcCustomUsername, dcCustomAvatarUrl, dcAutoPing, dcOnlyWithMedia, dcStripInvites } = req.body;
+    const { name, discordId, tgChatId, botKey, threadId, dcWebhookUrl, dcThreadId, dcCustomUsername, dcCustomAvatarUrl, dcAutoPing, dcOnlyWithMedia, dcStripInvites, category } = req.body;
     
     if (!discordId)
       return res.status(400).json({ error: 'Discord ID is required' });
@@ -290,10 +296,11 @@ function startWebServer(tgManager, channelMap, port = 5080, tg2dcStore = null) {
     }
     
     const ch = channelStore.add({ 
+      category: category || 'General',
       name, discordId, tgChatId: tgChatId || '', botKey: botKey || '1', threadId, dcWebhookUrl,
       dcThreadId, dcCustomUsername, dcCustomAvatarUrl, dcAutoPing, dcOnlyWithMedia, dcStripInvites 
     });
-    pushEvent('info', `Channel <b>${ch.name}</b> updated via dashboard`);
+    pushEvent('info', `Channel <b>${ch.name}</b> (${ch.category}) updated via dashboard`);
     res.json({ success: true, channel: ch });
   });
 
@@ -301,6 +308,121 @@ function startWebServer(tgManager, channelMap, port = 5080, tg2dcStore = null) {
     const ok = channelStore.remove(req.params.id);
     if (ok) { pushEvent('warning', `Channel mapping <b>${req.params.id}</b> deleted`); res.json({ success: true }); }
     else res.status(404).json({ error: 'Channel not found' });
+  });
+
+  // ── Categories Management ────────────────────────────────────
+  app.get('/api/categories', (_, res) => {
+    res.json(channelStore.listCategories());
+  });
+
+  app.delete('/api/categories/:name', (req, res) => {
+    const catName = req.params.name;
+    const count = channelStore.deleteCategory(catName);
+    pushEvent('warning', `Kategori <b>${catName}</b> beserta <b>${count} channel</b> berhasil dihapus`);
+    res.json({ success: true, count });
+  });
+
+  app.post('/api/categories/:name/mute', (req, res) => {
+    const catName = req.params.name;
+    const shouldMute = req.body.mute !== false;
+    const affected = channelStore.muteCategory(catName, shouldMute);
+    pushEvent('info', `Kategori <b>${catName}</b> (${affected.length} channel) ${shouldMute ? '🔇 di-mute' : '🔊 di-unmute'}`);
+    res.json({ success: true, affected });
+  });
+
+  app.put('/api/categories/:name/rename', (req, res) => {
+    const oldName = req.params.name;
+    const { newName } = req.body;
+    if (!newName || !newName.trim()) return res.status(400).json({ error: 'Nama baru kategori wajib diisi' });
+    const count = channelStore.renameCategory(oldName, newName.trim());
+    pushEvent('info', `Kategori <b>${oldName}</b> diubah namanya menjadi <b>${newName.trim()}</b> (${count} channel)`);
+    res.json({ success: true, count });
+  });
+
+  // ── Auto-Link & Bot Pool Endpoints ────────────────────────────
+  app.get('/api/autolink/bots', async (_, res) => {
+    try {
+      const bots = await discordBotPool.listBots();
+      res.json(bots);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/autolink/bots', async (req, res) => {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ error: 'Token Discord Bot wajib diisi' });
+    try {
+      const bot = await discordBotPool.addBot(token);
+      pushEvent('success', `Bot Discord <b>${bot.username}</b> berhasil ditambahkan ke Bot Pool!`);
+      res.json({ success: true, bot });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.delete('/api/autolink/bots/:id', (req, res) => {
+    const ok = discordBotPool.removeBot(req.params.id);
+    if (ok) {
+      pushEvent('warning', `Bot Discord dihapus dari Bot Pool`);
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ error: 'Bot tidak ditemukan' });
+    }
+  });
+
+  app.post('/api/autolink/preview', async (req, res) => {
+    const { sourceGuildId, sourceCategoryId } = req.body;
+    if (!sourceGuildId || !sourceCategoryId) {
+      return res.status(400).json({ error: 'sourceGuildId dan sourceCategoryId wajib diisi' });
+    }
+    try {
+      const preview = await autoLinkManager.previewSourceCategory(sourceGuildId, sourceCategoryId);
+      res.json({ success: true, preview });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/autolink/execute', async (req, res) => {
+    const { sourceGuildId, sourceCategoryId, targetGuildId, targetCategoryId, categoryName, autoSync } = req.body;
+    if (!sourceGuildId || !sourceCategoryId || !targetGuildId) {
+      return res.status(400).json({ error: 'sourceGuildId, sourceCategoryId, dan targetGuildId wajib diisi' });
+    }
+    try {
+      const result = await autoLinkManager.executeAutoLink({
+        sourceGuildId,
+        sourceCategoryId,
+        targetGuildId,
+        targetCategoryId,
+        categoryName,
+        autoSync: autoSync !== false,
+      });
+      res.json({ success: true, result });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/autolink/rules', (_, res) => {
+    res.json(autoLinkManager.listRules());
+  });
+
+  app.delete('/api/autolink/rules/:id', (req, res) => {
+    const ok = autoLinkManager.deleteRule(req.params.id);
+    if (ok) {
+      pushEvent('warning', `Aturan auto-sync kategori dihapus`);
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ error: 'Aturan tidak ditemukan' });
+    }
+  });
+
+  app.post('/api/autolink/rules/:id/toggle', (req, res) => {
+    const { enabled } = req.body;
+    const ok = autoLinkManager.toggleSync(req.params.id, enabled);
+    if (ok) res.json({ success: true });
+    else res.status(404).json({ error: 'Aturan tidak ditemukan' });
   });
 
   // ── Test Message ────────────────────────────────────────────

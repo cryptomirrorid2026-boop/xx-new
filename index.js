@@ -39,6 +39,7 @@ const tg2dcStore            = require('./utils/tgToDiscordStore');
 const tg2dcMsgStore         = require('./utils/tgToDiscordMessageStore');
 const { registerTgToDiscordHandlers } = require('./handlers/tgToDiscordHandler');
 const memoryGuard           = require('./utils/memoryGuard');
+const autoLinkManager       = require('./utils/autoLinkManager');
 
 // ─── Banner ───────────────────────────────────────────────────────────────────
 logger.banner();
@@ -317,6 +318,9 @@ tgManager.verifyAll().then(results => {
 // ─── Buat Discord Clients (Multi Token) ──────────────────────────────────────
 const discordTokens = parseDiscordTokens();
 let tg2dcInitialized = false;
+
+// Inisialisasi AutoLinkManager (Auto-sync listener channel baru)
+autoLinkManager.init(discordRegistry);
 
 discordTokens.forEach((token, idx) => {
   const accountNum = idx + 1;

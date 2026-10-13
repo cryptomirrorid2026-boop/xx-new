@@ -439,6 +439,17 @@ setInterval(async () => {
 }, 60000);
 
 // ─── Channels ─────────────────────────────────────────────────
+// ─── Channels & Categorization ──────────────────────────────────
+let allChannelsData = [];
+let allMutedSet = new Set();
+let currentCategoryFilter = 'all';
+let currentSearchQuery = '';
+let collapsedCategories = new Set(JSON.parse(localStorage.getItem('nexus_collapsed_cats') || '[]'));
+
+function saveCollapsedState() {
+    localStorage.setItem('nexus_collapsed_cats', JSON.stringify(Array.from(collapsedCategories)));
+}
+
 async function loadChannels() {
     try {
         const [channels, muteRes] = await Promise.all([
@@ -446,106 +457,652 @@ async function loadChannels() {
             fetch(`${API}/mute`).catch(() => ({ json: () => [] }))
         ]);
         const mutedList = await muteRes.json().catch(() => []);
-        const mutedSet = new Set(mutedList);
-        const tbody = document.getElementById('channels-table-body');
-        tbody.innerHTML = '';
-        if (!channels.length) {
-            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-secondary);padding:32px">No channels mapped yet.</td></tr>`;
-            return;
+        allMutedSet = new Set(mutedList);
+        allChannelsData = Array.isArray(channels) ? channels : [];
+
+        // Update Category Datalist untuk autocomplete di form Add Channel
+        const distinctCats = Array.from(new Set(allChannelsData.map(c => c.category || 'General'))).sort();
+        const datalist = document.getElementById('category-datalist');
+        if (datalist) {
+            datalist.innerHTML = distinctCats.map(cat => `<option value="${cat}">`).join('');
         }
-        channels.forEach(ch => {
-            const isMuted = mutedSet.has(ch.discordId);
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td><strong>${ch.name}</strong></td>
-                <td style="font-family:monospace;font-size:.82rem">${ch.discordId}</td>
-                <td style="font-family:monospace;font-size:.82rem">${ch.tgChatId || '<span style="color:var(--text-secondary)">—</span>'}</td>
-                <td><span class="tag">Bot #${ch.botKey}</span><br>${ch.threadId ? `<span class="tag" style="margin-top:4px;display:inline-block">Topic: ${ch.threadId}</span>` : ''}</td>
-                <td style="font-family:monospace;font-size:.8rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${ch.dcWebhookUrl || ''}">
-                    ${ch.dcWebhookUrl ? '✅ Configured' + (ch.dcThreadId ? `<br><span class="tag" style="margin-top:2px;font-size:0.7rem;">Thread: ${ch.dcThreadId}</span>` : '') + (ch.dcAutoPing ? `<br><span class="tag" style="margin-top:2px;font-size:0.7rem;">Ping: ${ch.dcAutoPing}</span>` : '') : '<span style="color:var(--text-secondary)">—</span>'}
-                </td>
-                <td>${isMuted ? '<span class="tag muted-tag">🔇 Muted</span>' : '<span class="tag" style="background:rgba(16,185,129,.1);color:var(--success-color)">🟢 Active</span>'}</td>
-                <td>
-                    <div class="action-btns">
-                        <button class="btn-mute ${isMuted ? 'muted' : ''}" data-id="${ch.discordId}" data-muted="${isMuted}" title="${isMuted ? 'Unmute' : 'Mute'}">
-                            <i class='bx ${isMuted ? 'bx-volume-full' : 'bx-volume-mute'}'></i> ${isMuted ? 'Unmute' : 'Mute'}
-                        </button>
-                        <button class="btn-test" data-id="${ch.discordId}" data-name="${ch.name}" data-tg="${ch.tgChatId}" data-bot="${ch.botKey}" title="Send Test Message">
-                            <i class='bx bx-send'></i> Test
-                        </button>
-                        <button class="btn-edit-ch" data-id="${ch.discordId}" data-name="${ch.name}" data-tg="${ch.tgChatId}" data-bot="${ch.botKey}" data-thread="${ch.threadId || ''}" data-dcwebhook="${ch.dcWebhookUrl || ''}" data-dcthread="${ch.dcThreadId || ''}" data-dcping="${ch.dcAutoPing || ''}" data-dcuser="${ch.dcCustomUsername || ''}" data-dcavatar="${ch.dcCustomAvatarUrl || ''}" data-dconlymedia="${ch.dcOnlyWithMedia ? 'true' : 'false'}" data-dcstripinvites="${ch.dcStripInvites !== false ? 'true' : 'false'}" title="Edit Mapping" style="background: rgba(59,130,246,0.1); color: var(--primary-color); padding: 5px 12px; border: 1px solid rgba(59,130,246,0.2); border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 5px; font-size: 0.8rem;">
-                            <i class='bx bx-edit'></i> Edit
-                        </button>
-                        <button class="btn-danger btn-delete-ch" data-id="${ch.discordId}" data-name="${ch.name}" title="Delete">
-                            <i class='bx bx-trash'></i>
-                        </button>
-                    </div>
-                </td>`;
-            tbody.appendChild(tr);
-        });
 
-        document.querySelectorAll('.btn-mute').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const id = btn.dataset.id;
-                const muted = btn.dataset.muted === 'true';
-                const endpoint = muted ? `${API}/mute/${id}/unmute` : `${API}/mute/${id}/mute`;
-                try {
-                    await fetch(endpoint, { method: 'POST' });
-                    showToast(muted ? 'Channel unmuted' : 'Channel muted', 'success');
-                    loadChannels();
-                } catch { showToast('Failed to toggle mute', 'error'); }
+        // Update Dropdown Filter Kategori
+        const catFilter = document.getElementById('channels-category-filter');
+        if (catFilter) {
+            const currentVal = catFilter.value || currentCategoryFilter;
+            const counts = {};
+            allChannelsData.forEach(c => {
+                const k = c.category || 'General';
+                counts[k] = (counts[k] || 0) + 1;
             });
-        });
 
-        document.querySelectorAll('.btn-test').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const info = document.getElementById('test-channel-info');
-                info.innerHTML = `<b>Channel:</b> ${btn.dataset.name}<br><b>Telegram:</b> ${btn.dataset.tg} &nbsp; <b>Bot:</b> #${btn.dataset.bot}`;
-                document.getElementById('test-msg-text').value = '';
-                document.getElementById('btn-send-test').dataset.id = btn.dataset.id;
-                openModal('modal-test-msg');
-            });
-        });
+            catFilter.innerHTML = `<option value="all">Semua Kategori (Total: ${allChannelsData.length})</option>` +
+                distinctCats.map(cat => `<option value="${cat}">${cat} (${counts[cat] || 0})</option>`).join('');
+            
+            if (distinctCats.includes(currentVal) || currentVal === 'all') {
+                catFilter.value = currentVal;
+                currentCategoryFilter = currentVal;
+            } else {
+                catFilter.value = 'all';
+                currentCategoryFilter = 'all';
+            }
+        }
 
-        document.querySelectorAll('.btn-edit-ch').forEach(btn => {
-            btn.addEventListener('click', () => {
-                currentEditingChannelId = btn.dataset.id;
-                document.getElementById('modal-channel-title').textContent = 'Edit Mapping';
-                document.getElementById('ch-name').value = btn.dataset.name;
-                document.getElementById('ch-discordId').value = btn.dataset.id;
-                document.getElementById('ch-tgChatId').value = btn.dataset.tg;
-                document.getElementById('ch-botKey').value = btn.dataset.bot;
-                document.getElementById('ch-threadId').value = btn.dataset.thread;
-                document.getElementById('ch-dcWebhookUrl').value = btn.dataset.dcwebhook;
-                document.getElementById('ch-dcThreadId').value = btn.dataset.dcthread || '';
-                document.getElementById('ch-dcAutoPing').value = btn.dataset.dcping || '';
-                document.getElementById('ch-dcCustomUsername').value = btn.dataset.dcuser || '';
-                document.getElementById('ch-dcCustomAvatarUrl').value = btn.dataset.dcavatar || '';
-                document.getElementById('ch-dcOnlyWithMedia').checked = btn.dataset.dconlymedia === 'true';
-                document.getElementById('ch-dcStripInvites').checked = btn.dataset.dcstripinvites !== 'false';
-                const dcDetails = document.getElementById('dc-advanced-details');
-                if (dcDetails) {
-                    dcDetails.open = Boolean(btn.dataset.dcthread || btn.dataset.dcping || btn.dataset.dcuser || btn.dataset.dcavatar);
-                }
-                openModal('modal-channel');
-            });
-        });
-
-        document.querySelectorAll('.btn-delete-ch').forEach(btn => {
-            btn.addEventListener('click', () => {
-                confirmDelete(btn.dataset.name, async () => {
-                    try {
-                        const r = await fetch(`${API}/channels/${btn.dataset.id}`, { method: 'DELETE' });
-                        if (r.ok) { showToast('Mapping deleted'); loadChannels(); }
-                        else showToast('Failed to delete', 'error');
-                    } catch { showToast('Connection error', 'error'); }
-                });
-            });
-        });
-    } catch { showToast('Failed to load channels', 'error'); }
+        renderGroupedChannels();
+        updateAutoLinkBotStatus();
+    } catch (err) {
+        showToast('Failed to load channels: ' + err.message, 'error');
+    }
 }
 
-// Test message send
+function renderGroupedChannels() {
+    const container = document.getElementById('channels-category-container');
+    if (!container) return;
+
+    // Filter data berdasarkan Kategori & Search Query
+    const query = currentSearchQuery.toLowerCase().trim();
+    const filtered = allChannelsData.filter(ch => {
+        const cat = ch.category || 'General';
+        const matchCat = currentCategoryFilter === 'all' || cat.toLowerCase() === currentCategoryFilter.toLowerCase();
+        if (!matchCat) return false;
+
+        if (!query) return true;
+        return (
+            (ch.name || '').toLowerCase().includes(query) ||
+            String(ch.discordId || '').includes(query) ||
+            cat.toLowerCase().includes(query) ||
+            String(ch.tgChatId || '').includes(query) ||
+            String(ch.dcWebhookUrl || '').toLowerCase().includes(query)
+        );
+    });
+
+    if (!filtered.length) {
+        container.innerHTML = `
+            <div class="glass-card" style="text-align:center; padding:40px 20px; color:var(--text-secondary);">
+                <i class='bx bx-search-alt' style="font-size:2.5rem; opacity:0.5; margin-bottom:8px;"></i>
+                <div style="font-weight:600; font-size:1rem; color:var(--text-primary); margin-bottom:4px;">
+                    ${allChannelsData.length === 0 ? 'Belum Ada Channel Mapping' : 'Tidak Ada Channel yang Cocok'}
+                </div>
+                <div style="font-size:0.85rem;">
+                    ${allChannelsData.length === 0 
+                        ? 'Gunakan tombol <b>Auto-Link Category</b> atau <b>Add Channel</b> untuk mulai menambahkan mapping.' 
+                        : 'Coba ubah kata kunci pencarian atau pilih filter kategori lain.'}
+                </div>
+            </div>`;
+        return;
+    }
+
+    // Kelompokkan per Kategori
+    const groups = new Map();
+    filtered.forEach(ch => {
+        const cat = ch.category || 'General';
+        if (!groups.has(cat)) groups.set(cat, []);
+        groups.get(cat).push(ch);
+    });
+
+    container.innerHTML = '';
+
+    // Render masing-masing grup kategori
+    groups.forEach((channels, catName) => {
+        const isCollapsed = collapsedCategories.has(catName);
+        const card = document.createElement('div');
+        card.className = `category-group-card ${isCollapsed ? 'collapsed' : ''}`;
+        card.dataset.category = catName;
+
+        // Cek apakah seluruh channel di kategori ini di-mute
+        const allMuted = channels.every(c => allMutedSet.has(c.discordId));
+
+        card.innerHTML = `
+            <div class="category-group-header" title="Klik untuk expand / collapse">
+                <div class="category-header-title">
+                    <i class='bx bx-chevron-down category-collapse-icon'></i>
+                    <span class="category-group-name">
+                        <i class='bx bx-folder-open'></i> ${escapeHtml(catName)}
+                    </span>
+                    <span class="category-count-badge">${channels.length} Channels</span>
+                </div>
+                <div class="category-header-actions" onclick="event.stopPropagation()">
+                    <button class="btn-secondary btn-sm btn-cat-mute" data-category="${escapeHtml(catName)}" data-muted="${allMuted}" title="${allMuted ? 'Unmute Seluruh Kategori' : 'Mute Seluruh Kategori'}" style="font-size:0.75rem; padding:4px 9px;">
+                        <i class='bx ${allMuted ? 'bx-volume-full' : 'bx-volume-mute'}'></i> ${allMuted ? 'Unmute All' : 'Mute All'}
+                    </button>
+                    <button class="btn-secondary btn-sm btn-cat-rename" data-category="${escapeHtml(catName)}" title="Ubah Nama Kategori" style="font-size:0.75rem; padding:4px 9px;">
+                        <i class='bx bx-edit'></i> Rename
+                    </button>
+                    <button class="btn-danger btn-sm btn-cat-delete" data-category="${escapeHtml(catName)}" data-count="${channels.length}" title="Hapus Seluruh Kategori & Channel di dalamnya" style="font-size:0.75rem; padding:4px 9px;">
+                        <i class='bx bx-trash'></i> Delete
+                    </button>
+                </div>
+            </div>
+            <div class="category-group-body">
+                <div class="table-responsive no-padding">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Discord Channel ID</th>
+                                <th>Telegram Chat ID</th>
+                                <th>Bot Key / Thread</th>
+                                <th>Discord Webhook (DC-to-DC)</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${channels.map(ch => {
+                                const isMuted = allMutedSet.has(ch.discordId);
+                                return `
+                                <tr>
+                                    <td><strong>${escapeHtml(ch.name)}</strong></td>
+                                    <td style="font-family:monospace;font-size:.82rem">${ch.discordId}</td>
+                                    <td style="font-family:monospace;font-size:.82rem">${ch.tgChatId || '<span style="color:var(--text-secondary)">—</span>'}</td>
+                                    <td>
+                                        <span class="tag">Bot #${ch.botKey || '1'}</span>
+                                        ${ch.threadId ? `<br><span class="tag" style="margin-top:4px;display:inline-block">Topic: ${ch.threadId}</span>` : ''}
+                                    </td>
+                                    <td style="font-family:monospace;font-size:.8rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${ch.dcWebhookUrl || ''}">
+                                        ${ch.dcWebhookUrl ? '✅ Configured' + (ch.dcThreadId ? `<br><span class="tag" style="margin-top:2px;font-size:0.7rem;">Thread: ${ch.dcThreadId}</span>` : '') + (ch.dcAutoPing ? `<br><span class="tag" style="margin-top:2px;font-size:0.7rem;">Ping: ${ch.dcAutoPing}</span>` : '') : '<span style="color:var(--text-secondary)">—</span>'}
+                                    </td>
+                                    <td>${isMuted ? '<span class="tag muted-tag">🔇 Muted</span>' : '<span class="tag" style="background:rgba(16,185,129,.1);color:var(--success-color)">🟢 Active</span>'}</td>
+                                    <td>
+                                        <div class="action-btns">
+                                            <button class="btn-mute ${isMuted ? 'muted' : ''}" data-id="${ch.discordId}" data-muted="${isMuted}" title="${isMuted ? 'Unmute' : 'Mute'}">
+                                                <i class='bx ${isMuted ? 'bx-volume-full' : 'bx-volume-mute'}'></i>
+                                            </button>
+                                            <button class="btn-test" data-id="${ch.discordId}" data-name="${escapeHtml(ch.name)}" data-tg="${ch.tgChatId || ''}" data-bot="${ch.botKey || '1'}" title="Send Test Message">
+                                                <i class='bx bx-send'></i>
+                                            </button>
+                                            <button class="btn-edit-ch" data-id="${ch.discordId}" data-name="${escapeHtml(ch.name)}" data-category="${escapeHtml(ch.category || 'General')}" data-tg="${ch.tgChatId || ''}" data-bot="${ch.botKey || '1'}" data-thread="${ch.threadId || ''}" data-dcwebhook="${ch.dcWebhookUrl || ''}" data-dcthread="${ch.dcThreadId || ''}" data-dcping="${ch.dcAutoPing || ''}" data-dcuser="${ch.dcCustomUsername || ''}" data-dcavatar="${ch.dcCustomAvatarUrl || ''}" data-dconlymedia="${ch.dcOnlyWithMedia ? 'true' : 'false'}" data-dcstripinvites="${ch.dcStripInvites !== false ? 'true' : 'false'}" title="Edit Mapping" style="background: rgba(59,130,246,0.1); color: var(--primary-color); padding: 5px 10px; border: 1px solid rgba(59,130,246,0.2); border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 0.8rem;">
+                                                <i class='bx bx-edit'></i>
+                                            </button>
+                                            <button class="btn-danger btn-delete-ch" data-id="${ch.discordId}" data-name="${escapeHtml(ch.name)}" title="Delete">
+                                                <i class='bx bx-trash'></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+
+        // Toggle collapse saat header diklik
+        const header = card.querySelector('.category-group-header');
+        header.addEventListener('click', () => {
+            card.classList.toggle('collapsed');
+            if (card.classList.contains('collapsed')) {
+                collapsedCategories.add(catName);
+            } else {
+                collapsedCategories.delete(catName);
+            }
+            saveCollapsedState();
+        });
+
+        container.appendChild(card);
+    });
+
+    // Wire-up event buttons di dalam tabel
+    attachChannelActionListeners();
+}
+
+function attachChannelActionListeners() {
+    // Mute channel satuan
+    document.querySelectorAll('.btn-mute').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const id = btn.dataset.id;
+            const muted = btn.dataset.muted === 'true';
+            const endpoint = muted ? `${API}/mute/${id}/unmute` : `${API}/mute/${id}/mute`;
+            try {
+                await fetch(endpoint, { method: 'POST' });
+                showToast(muted ? 'Channel unmuted' : 'Channel muted', 'success');
+                loadChannels();
+            } catch { showToast('Gagal mengubah status mute', 'error'); }
+        });
+    });
+
+    // Test message
+    document.querySelectorAll('.btn-test').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const info = document.getElementById('test-channel-info');
+            info.innerHTML = `<b>Channel:</b> ${btn.dataset.name}<br><b>Telegram:</b> ${btn.dataset.tg || '—'} &nbsp; <b>Bot:</b> #${btn.dataset.bot}`;
+            document.getElementById('test-msg-text').value = '';
+            document.getElementById('btn-send-test').dataset.id = btn.dataset.id;
+            openModal('modal-test-msg');
+        });
+    });
+
+    // Edit channel
+    document.querySelectorAll('.btn-edit-ch').forEach(btn => {
+        btn.addEventListener('click', () => {
+            currentEditingChannelId = btn.dataset.id;
+            document.getElementById('modal-channel-title').textContent = 'Edit Mapping';
+            document.getElementById('ch-category').value = btn.dataset.category || 'General';
+            document.getElementById('ch-name').value = btn.dataset.name;
+            document.getElementById('ch-discordId').value = btn.dataset.id;
+            document.getElementById('ch-tgChatId').value = btn.dataset.tg;
+            document.getElementById('ch-botKey').value = btn.dataset.bot;
+            document.getElementById('ch-threadId').value = btn.dataset.thread;
+            document.getElementById('ch-dcWebhookUrl').value = btn.dataset.dcwebhook;
+            document.getElementById('ch-dcThreadId').value = btn.dataset.dcthread || '';
+            document.getElementById('ch-dcAutoPing').value = btn.dataset.dcping || '';
+            document.getElementById('ch-dcCustomUsername').value = btn.dataset.dcuser || '';
+            document.getElementById('ch-dcCustomAvatarUrl').value = btn.dataset.dcavatar || '';
+            document.getElementById('ch-dcOnlyWithMedia').checked = btn.dataset.dconlymedia === 'true';
+            document.getElementById('ch-dcStripInvites').checked = btn.dataset.dcstripinvites !== 'false';
+            const dcDetails = document.getElementById('dc-advanced-details');
+            if (dcDetails) {
+                dcDetails.open = Boolean(btn.dataset.dcthread || btn.dataset.dcping || btn.dataset.dcuser || btn.dataset.dcavatar);
+            }
+            openModal('modal-channel');
+        });
+    });
+
+    // Delete channel satuan
+    document.querySelectorAll('.btn-delete-ch').forEach(btn => {
+        btn.addEventListener('click', () => {
+            confirmDelete(btn.dataset.name, async () => {
+                try {
+                    const r = await fetch(`${API}/channels/${btn.dataset.id}`, { method: 'DELETE' });
+                    if (r.ok) { showToast('Mapping berhasil dihapus'); loadChannels(); }
+                    else showToast('Gagal menghapus mapping', 'error');
+                } catch { showToast('Connection error', 'error'); }
+            });
+        });
+    });
+
+    // Category Mute All
+    document.querySelectorAll('.btn-cat-mute').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const cat = btn.dataset.category;
+            const isMuted = btn.dataset.muted === 'true';
+            try {
+                const r = await fetch(`${API}/categories/${encodeURIComponent(cat)}/mute`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mute: !isMuted })
+                });
+                const d = await r.json();
+                if (d.success) {
+                    showToast(`Kategori "${cat}" ${isMuted ? 'di-unmute' : 'di-mute'} (${d.affected.length} channel)`, 'success');
+                    loadChannels();
+                }
+            } catch { showToast('Gagal mute kategori', 'error'); }
+        });
+    });
+
+    // Category Rename
+    document.querySelectorAll('.btn-cat-rename').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const cat = btn.dataset.category;
+            document.getElementById('rename-cat-old').value = cat;
+            document.getElementById('rename-cat-new').value = cat;
+            openModal('modal-rename-category');
+        });
+    });
+
+    // Category Delete All
+    document.querySelectorAll('.btn-cat-delete').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const cat = btn.dataset.category;
+            const count = btn.dataset.count;
+            if (confirm(`⚠️ PERINGATAN: Apakah Anda yakin ingin menghapus seluruh kategori "${cat}" beserta ${count} channel di dalamnya? Tindakan ini tidak dapat dibatalkan.`)) {
+                fetch(`${API}/categories/${encodeURIComponent(cat)}`, { method: 'DELETE' })
+                    .then(r => r.json())
+                    .then(d => {
+                        if (d.success) {
+                            showToast(`Kategori "${cat}" (${d.count} channel) berhasil dihapus!`, 'success');
+                            loadChannels();
+                        } else {
+                            showToast(d.error || 'Gagal menghapus kategori', 'error');
+                        }
+                    })
+                    .catch(() => showToast('Connection error', 'error'));
+            }
+        });
+    });
+}
+
+// ─── Toolbar Handlers (Search, Filter, Expand/Collapse) ─────────
+const channelsSearchInput = document.getElementById('channels-search');
+if (channelsSearchInput) {
+    let searchDebounce = null;
+    channelsSearchInput.addEventListener('input', e => {
+        clearTimeout(searchDebounce);
+        searchDebounce = setTimeout(() => {
+            currentSearchQuery = e.target.value.trim();
+            renderGroupedChannels();
+        }, 200);
+    });
+}
+
+const channelsCategoryFilter = document.getElementById('channels-category-filter');
+if (channelsCategoryFilter) {
+    channelsCategoryFilter.addEventListener('change', e => {
+        currentCategoryFilter = e.target.value;
+        renderGroupedChannels();
+    });
+}
+
+const btnToggleAllCats = document.getElementById('btn-toggle-all-cats');
+if (btnToggleAllCats) {
+    btnToggleAllCats.addEventListener('click', () => {
+        const distinctCats = Array.from(new Set(allChannelsData.map(c => c.category || 'General')));
+        const allAreCollapsed = distinctCats.every(c => collapsedCategories.has(c));
+        if (allAreCollapsed) {
+            collapsedCategories.clear();
+        } else {
+            distinctCats.forEach(c => collapsedCategories.add(c));
+        }
+        saveCollapsedState();
+        renderGroupedChannels();
+    });
+}
+
+// Form Rename Category
+const formRenameCat = document.getElementById('form-rename-category');
+if (formRenameCat) {
+    formRenameCat.addEventListener('submit', async e => {
+        e.preventDefault();
+        const oldName = document.getElementById('rename-cat-old').value;
+        const newName = document.getElementById('rename-cat-new').value.trim();
+        if (!newName) return;
+        try {
+            const r = await fetch(`${API}/categories/${encodeURIComponent(oldName)}/rename`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ newName })
+            });
+            const d = await r.json();
+            if (d.success) {
+                showToast(`Kategori berhasil diubah menjadi "${newName}"`, 'success');
+                closeModal('modal-rename-category');
+                loadChannels();
+            } else {
+                showToast(d.error || 'Gagal mengubah nama kategori', 'error');
+            }
+        } catch { showToast('Connection error', 'error'); }
+    });
+}
+
+// ─── Auto-Link Category Manager ────────────────────────────────
+const btnAutolinkModal = document.getElementById('btn-autolink-modal');
+if (btnAutolinkModal) {
+    btnAutolinkModal.addEventListener('click', () => {
+        document.getElementById('form-autolink').reset();
+        document.getElementById('autolink-preview-container').style.display = 'none';
+        document.getElementById('autolink-progress-container').style.display = 'none';
+        document.getElementById('autolink-log').innerHTML = '';
+        updateAutoLinkBotStatus();
+        openModal('modal-autolink');
+    });
+}
+
+async function updateAutoLinkBotStatus() {
+    const el = document.getElementById('autolink-botpool-status');
+    if (!el) return;
+    try {
+        const bots = await fetch(`${API}/autolink/bots`).then(r => r.json());
+        const validBots = bots.filter(b => b.valid);
+        if (validBots.length === 0) {
+            el.innerHTML = `<span style="color:#f87171;"><i class='bx bx-error-circle'></i> Belum ada bot terdaftar. Klik <b>Kelola Bot Tokens</b> untuk menambahkan 3-4 bot.</span>`;
+        } else {
+            el.innerHTML = `<span style="color:#34d399;"><i class='bx bx-check-circle'></i> <b>${validBots.length} Bot Siap</b> (Rotasi Multi-Bot Anti-Rate-Limit aktif)</span> &nbsp;·&nbsp; ${validBots.map(b => b.username).join(', ')}`;
+        }
+    } catch {
+        el.textContent = 'Gagal memuat status bot.';
+    }
+}
+
+// Preview Source Channels
+const btnAutolinkPreview = document.getElementById('btn-autolink-preview');
+if (btnAutolinkPreview) {
+    btnAutolinkPreview.addEventListener('click', async () => {
+        const srcGuild = document.getElementById('autolink-source-guild').value.trim();
+        const srcCat = document.getElementById('autolink-source-category').value.trim();
+        if (!srcGuild || !srcCat) {
+            showToast('Isi ID Server Sumber & ID Kategori Sumber terlebih dahulu', 'warning');
+            return;
+        }
+
+        btnAutolinkPreview.disabled = true;
+        btnAutolinkPreview.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Membaca...`;
+        try {
+            const r = await fetch(`${API}/autolink/preview`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sourceGuildId: srcGuild, sourceCategoryId: srcCat })
+            });
+            const d = await r.json();
+            if (d.success) {
+                const prev = d.preview;
+                document.getElementById('autolink-preview-container').style.display = 'block';
+                document.getElementById('autolink-preview-title').textContent = `Kategori: "${prev.sourceCategoryName}" (${prev.sourceGuildName})`;
+                document.getElementById('autolink-preview-badge').textContent = `${prev.channelCount} Text Channels`;
+                
+                // Auto-fill nama kategori jika masih kosong
+                const catNameInput = document.getElementById('autolink-category-name');
+                if (!catNameInput.value.trim()) {
+                    catNameInput.value = prev.sourceCategoryName;
+                }
+
+                const listEl = document.getElementById('autolink-preview-list');
+                listEl.innerHTML = prev.channels.map(c => `
+                    <div style="display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid rgba(255,255,255,0.04);">
+                        <span>#${c.name} <span style="opacity:0.6;font-size:0.75rem;">(${c.id})</span></span>
+                        <span>${c.alreadyMapped ? '<span style="color:#fbbf24;">⚠️ Sudah Dimapping</span>' : '<span style="color:#34d399;">✅ Siap Di-link</span>'}</span>
+                    </div>
+                `).join('');
+                showToast(`Ditemukan ${prev.channelCount} channel di kategori sumber!`, 'success');
+            } else {
+                showToast(d.error || 'Gagal membaca kategori sumber', 'error');
+            }
+        } catch (err) {
+            showToast('Connection error: ' + err.message, 'error');
+        } finally {
+            btnAutolinkPreview.disabled = false;
+            btnAutolinkPreview.innerHTML = `<i class='bx bx-search'></i> Preview Channel`;
+        }
+    });
+}
+
+// Execute AutoLink
+const formAutolink = document.getElementById('form-autolink');
+if (formAutolink) {
+    formAutolink.addEventListener('submit', async e => {
+        e.preventDefault();
+        const payload = {
+            sourceGuildId: document.getElementById('autolink-source-guild').value.trim(),
+            sourceCategoryId: document.getElementById('autolink-source-category').value.trim(),
+            targetGuildId: document.getElementById('autolink-target-guild').value.trim(),
+            targetCategoryId: document.getElementById('autolink-target-category').value.trim() || null,
+            categoryName: document.getElementById('autolink-category-name').value.trim(),
+            autoSync: document.getElementById('autolink-autosync').checked
+        };
+
+        const progressContainer = document.getElementById('autolink-progress-container');
+        const progressBar = document.getElementById('autolink-progress-bar');
+        const progressPct = document.getElementById('autolink-progress-pct');
+        const progressLabel = document.getElementById('autolink-progress-label');
+        const logEl = document.getElementById('autolink-log');
+        const btnStart = document.getElementById('btn-autolink-start');
+
+        progressContainer.style.display = 'block';
+        progressBar.style.width = '15%';
+        progressPct.textContent = '15%';
+        progressLabel.textContent = 'Memulai proses pembuatan channel & webhook...';
+        logEl.innerHTML = `<div class="log-line">🚀 Memulai Auto-Link & Provisioning ke server tujuan...</div>`;
+
+        btnStart.disabled = true;
+        btnStart.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Sedang Memproses...`;
+
+        try {
+            // Simulasi progress halus sembari menunggu backend selesai
+            let fakePct = 15;
+            const progressTimer = setInterval(() => {
+                if (fakePct < 85) {
+                    fakePct += 5;
+                    progressBar.style.width = `${fakePct}%`;
+                    progressPct.textContent = `${fakePct}%`;
+                }
+            }, 500);
+
+            const r = await fetch(`${API}/autolink/execute`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            clearInterval(progressTimer);
+
+            const d = await r.json();
+            if (d.success) {
+                progressBar.style.width = '100%';
+                progressPct.textContent = '100%';
+                progressLabel.textContent = 'Selesai!';
+
+                const res = d.result;
+                logEl.innerHTML += `
+                    <div class="log-line log-success">✅ Berhasil membuat Kategori / Channel tujuan!</div>
+                    <div class="log-line log-success">✅ ${res.created.length} channel baru dibuat & webhook terpasang.</div>
+                    ${res.updated.length ? `<div class="log-line log-warn">ℹ️ ${res.updated.length} channel diperbarui mappingnya.</div>` : ''}
+                    ${res.errors.length ? `<div class="log-line log-err">❌ ${res.errors.length} channel mengalami kendala: ${res.errors.map(e => e.name).join(', ')}</div>` : ''}
+                    <div class="log-line log-success">✨ Seluruh mapping disimpan ke kategori "${res.categoryName}"!</div>
+                `;
+
+                showToast(`Auto-Link Selesai! ${res.created.length + res.updated.length} channel tersambung.`, 'success');
+                setTimeout(() => {
+                    closeModal('modal-autolink');
+                    loadChannels();
+                }, 2000);
+            } else {
+                progressBar.style.width = '0%';
+                progressPct.textContent = '0%';
+                progressLabel.textContent = 'Gagal!';
+                logEl.innerHTML += `<div class="log-line log-err">❌ Error: ${d.error || 'Gagal mengeksekusi'}</div>`;
+                showToast(d.error || 'Gagal mengeksekusi auto-link', 'error');
+            }
+        } catch (err) {
+            logEl.innerHTML += `<div class="log-line log-err">❌ Connection error: ${err.message}</div>`;
+            showToast('Connection error: ' + err.message, 'error');
+        } finally {
+            btnStart.disabled = false;
+            btnStart.innerHTML = `<i class='bx bx-rocket'></i> Mulai Auto-Link & Provisioning`;
+        }
+    });
+}
+
+// ─── Bot Pool Modal Handlers ────────────────────────────────────
+function openBotPoolModal() {
+    loadBotPool();
+    openModal('modal-botpool');
+}
+
+const btnOpenBotpool = document.getElementById('btn-open-botpool');
+if (btnOpenBotpool) btnOpenBotpool.addEventListener('click', openBotPoolModal);
+
+const btnOpenBotpoolMgr = document.getElementById('btn-open-botpool-mgr');
+if (btnOpenBotpoolMgr) btnOpenBotpoolMgr.addEventListener('click', openBotPoolModal);
+
+async function loadBotPool() {
+    const tbody = document.getElementById('botpool-table-body');
+    if (!tbody) return;
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:16px;">Memuat daftar bot...</td></tr>`;
+    try {
+        const bots = await fetch(`${API}/autolink/bots`).then(r => r.json());
+        if (!bots.length) {
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-secondary);">Belum ada Bot Discord resmi di pool. Tambahkan minimal 1 bot token (disarankan 3-4).</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = bots.map((b, idx) => `
+            <tr>
+                <td>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        ${b.avatar ? `<img src="${b.avatar}" style="width:26px;height:26px;border-radius:50%;">` : `<i class='bx bxl-discord' style="font-size:1.4rem;color:#5865f2;"></i>`}
+                        <strong>${escapeHtml(b.username || 'Bot #' + (idx+1))}</strong>
+                    </div>
+                </td>
+                <td style="font-family:monospace;font-size:0.8rem;">${b.id || '—'}</td>
+                <td style="font-family:monospace;font-size:0.8rem;">${b.tokenMasked || '••••••••'}</td>
+                <td>${b.valid ? '<span class="tag" style="background:rgba(16,185,129,.1);color:var(--success-color);">🟢 Valid</span>' : '<span class="tag" style="background:rgba(239,68,68,.1);color:#f87171;">🔴 Error</span>'}</td>
+                <td>
+                    <button class="btn-danger btn-sm btn-delete-botpool" data-id="${b.id || b.token}" title="Hapus Bot" style="padding:4px 8px;">
+                        <i class='bx bx-trash'></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+
+        document.querySelectorAll('.btn-delete-botpool').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                if (confirm('Hapus bot ini dari pool?')) {
+                    try {
+                        const r = await fetch(`${API}/autolink/bots/${encodeURIComponent(btn.dataset.id)}`, { method: 'DELETE' });
+                        if (r.ok) {
+                            showToast('Bot dihapus dari pool', 'success');
+                            loadBotPool();
+                            updateAutoLinkBotStatus();
+                        }
+                    } catch { showToast('Gagal menghapus bot', 'error'); }
+                }
+            });
+        });
+    } catch {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#f87171;">Gagal memuat bot pool.</td></tr>`;
+    }
+}
+
+const formAddBotpool = document.getElementById('form-add-botpool');
+if (formAddBotpool) {
+    formAddBotpool.addEventListener('submit', async e => {
+        e.preventDefault();
+        const input = document.getElementById('input-new-bot-token');
+        const token = input.value.trim();
+        if (!token) return;
+
+        const btn = document.getElementById('btn-save-bot-token');
+        btn.disabled = true;
+        btn.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Memverifikasi...`;
+        try {
+            const r = await fetch(`${API}/autolink/bots`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token })
+            });
+            const d = await r.json();
+            if (d.success) {
+                showToast(`Bot "${d.bot.username}" berhasil ditambahkan ke pool!`, 'success');
+                input.value = '';
+                loadBotPool();
+                updateAutoLinkBotStatus();
+            } else {
+                showToast(d.error || 'Gagal menambahkan bot', 'error');
+            }
+        } catch {
+            showToast('Connection error', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = `<i class='bx bx-plus'></i> Tambah Bot`;
+        }
+    });
+}
+
+// Helper escape HTML
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// ─── Test message send ──────────────────────────────────────────
 document.getElementById('btn-send-test').addEventListener('click', async function() {
     const id = this.dataset.id;
     const msg = document.getElementById('test-msg-text').value.trim();
@@ -563,6 +1120,7 @@ document.getElementById('btn-add-channel').addEventListener('click', () => {
     currentEditingChannelId = null;
     document.getElementById('modal-channel-title').textContent = 'Add New Mapping';
     document.getElementById('form-channel').reset(); 
+    document.getElementById('ch-category').value = currentCategoryFilter !== 'all' ? currentCategoryFilter : 'General';
     document.getElementById('ch-dcThreadId').value = '';
     document.getElementById('ch-dcAutoPing').value = '';
     document.getElementById('ch-dcCustomUsername').value = '';
@@ -577,6 +1135,7 @@ document.getElementById('btn-add-channel').addEventListener('click', () => {
 document.getElementById('form-channel').addEventListener('submit', async e => {
     e.preventDefault();
     const payload = { 
+        category: document.getElementById('ch-category').value.trim() || 'General',
         name: document.getElementById('ch-name').value, 
         discordId: document.getElementById('ch-discordId').value, 
         tgChatId: document.getElementById('ch-tgChatId').value, 

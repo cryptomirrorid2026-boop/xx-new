@@ -306,30 +306,39 @@
 
                 <!-- CHANNELS SECTION -->
                 <div id="section-channels" class="section">
-                    <div class="section-header">
-                        <h2>Channel Mappings</h2>
-                        <button class="btn-primary" id="btn-add-channel"><i class='bx bx-plus'></i> Add Channel</button>
+                    <div class="section-header" style="flex-wrap: wrap; gap: 12px;">
+                        <div>
+                            <h2>Channel Mappings</h2>
+                            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 2px;">Kelola mapping channel secara berkelompok per kategori/kelas agar rapi dan terorganisir.</p>
+                        </div>
+                        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                            <button class="btn-primary" id="btn-autolink-modal" style="background: linear-gradient(135deg, #6366f1, #a855f7); border: none; box-shadow: 0 4px 14px rgba(99,102,241,0.35);"><i class='bx bx-link-alt'></i> Auto-Link Category</button>
+                            <button class="btn-secondary" id="btn-open-botpool" style="border: 1px solid rgba(255,255,255,0.15);"><i class='bx bxl-discord'></i> Bot Pool</button>
+                            <button class="btn-primary" id="btn-add-channel"><i class='bx bx-plus'></i> Add Channel</button>
+                        </div>
+                    </div>
+
+                    <!-- Category & Search Toolbar -->
+                    <div class="category-toolbar">
+                        <div class="category-toolbar-left">
+                            <div class="search-input-wrap">
+                                <i class='bx bx-search'></i>
+                                <input type="text" id="channels-search" placeholder="Cari channel, Discord ID, atau kategori...">
+                            </div>
+                            <select id="channels-category-filter" class="category-select-filter">
+                                <option value="all">Semua Kategori (All)</option>
+                            </select>
+                        </div>
+                        <div class="category-toolbar-right">
+                            <button type="button" id="btn-toggle-all-cats" class="btn-secondary" style="font-size: 0.82rem; padding: 8px 14px;">
+                                <i class='bx bx-expand-vertical'></i> Expand / Collapse All
+                            </button>
+                        </div>
                     </div>
                     
-                    <div class="glass-card no-padding">
-                        <div class="table-responsive">
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Name</th>
-                                        <th>Discord Channel ID</th>
-                                        <th>Telegram Chat ID</th>
-                                        <th>Bot Key / Thread ID</th>
-                                        <th>Discord Webhook (DC-to-DC)</th>
-                                        <th>Status</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="channels-table-body">
-                                    <!-- Channels will be populated here -->
-                                </tbody>
-                            </table>
-                        </div>
+                    <!-- Grouped Categories Container -->
+                    <div id="channels-category-container">
+                        <div style="text-align:center; padding:32px; color:var(--text-secondary);"><i class='bx bx-loader-alt bx-spin' style="font-size:2rem;"></i><br>Memuat kategori channel...</div>
                     </div>
                 </div>
 
@@ -1296,6 +1305,16 @@
             </div>
             <form id="form-channel">
                 <div class="modal-body">
+                    <!-- Row 0: Category / Group Selection -->
+                    <div class="form-grid">
+                        <div class="form-group" style="grid-column: 1 / -1;">
+                            <label for="ch-category">Category / Group <span class="req-star">*</span></label>
+                            <input type="text" id="ch-category" list="category-datalist" class="form-control" required placeholder="e.g. Akademi Crypto / Kelas Xander" value="General">
+                            <datalist id="category-datalist"></datalist>
+                            <div class="form-hint"><i class='bx bx-folder'></i> Kelompokkan mapping agar rapi di dashboard dan tidak campur aduk.</div>
+                        </div>
+                    </div>
+
                     <!-- Row 1: Alias & Discord Channel ID -->
                     <div class="form-grid">
                         <div class="form-group">
@@ -1389,6 +1408,167 @@
                     <button type="submit" class="btn-primary"><i class='bx bx-check'></i> Save Mapping</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Modal Auto-Link Category (DC-to-DC Auto Provisioning) -->
+    <div id="modal-autolink" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-autolink-title">
+        <div class="modal-content modal-lg" style="max-width: 780px;">
+            <div class="modal-header">
+                <h2 id="modal-autolink-title"><i class='bx bx-link-alt' style="color:#6366f1;"></i> Auto-Link Category (DC ➔ DC Auto Provisioning)</h2>
+                <span class="close-modal" data-modal="modal-autolink">&times;</span>
+            </div>
+            <div class="modal-body">
+                <!-- Informative Guidance Card -->
+                <div style="background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.25); border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; display: flex; gap: 12px; align-items: flex-start;">
+                    <i class='bx bx-info-circle' style="color: #818cf8; font-size: 1.5rem; margin-top: 2px;"></i>
+                    <div style="font-size: 0.88rem; line-height: 1.5; color: var(--text-primary);">
+                        <b>Otomatisasi Penuh:</b> Cukup masukkan ID Server & Kategori Sumber, dan Server Tujuan. Bot Discord di server tujuan Anda akan membaca seluruh channel, membuat channel tujuan, membuat Webhook (rotasi multi-bot anti-limit), dan menyambungkannya ke sistem secara instan!
+                    </div>
+                </div>
+
+                <!-- Bot Pool Status Card -->
+                <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:10px; padding:12px 16px; margin-bottom:18px;">
+                    <div>
+                        <strong style="font-size:0.9rem; color:var(--text-primary);"><i class='bx bxl-discord' style="color:#5865f2;"></i> Discord Bot Pool Status (Server Tujuan):</strong>
+                        <div id="autolink-botpool-status" style="font-size:0.82rem; color:var(--text-secondary); margin-top:3px;">Memuat status bot...</div>
+                    </div>
+                    <button type="button" class="btn-secondary btn-sm" id="btn-open-botpool-mgr" style="font-size:0.8rem;"><i class='bx bx-cog'></i> Kelola Bot Tokens</button>
+                </div>
+
+                <form id="form-autolink">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="autolink-source-guild">ID Server Sumber (Server Info) <span class="req-star">*</span></label>
+                            <input type="text" id="autolink-source-guild" class="form-control" required placeholder="e.g. 112233445566778899">
+                            <div class="form-hint"><i class='bx bx-info-circle'></i> Akun Discord user token Anda wajib sudah bergabung ke server ini.</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="autolink-source-category">ID Kategori Sumber <span class="req-star">*</span></label>
+                            <input type="text" id="autolink-source-category" class="form-control" required placeholder="e.g. 998877665544332211">
+                            <div class="form-hint"><i class='bx bx-info-circle'></i> Klik kanan Kategori di Discord sumber ➔ <b>Copy Category ID</b>.</div>
+                        </div>
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="autolink-target-guild">ID Server Tujuan (Server Utama Kita) <span class="req-star">*</span></label>
+                            <input type="text" id="autolink-target-guild" class="form-control" required placeholder="e.g. 887766554433221100">
+                            <div class="form-hint"><i class='bx bx-info-circle'></i> Server tujuan kita tempat Bot Discord resmi berada.</div>
+                        </div>
+                        <div class="form-group">
+                            <label for="autolink-target-category">ID Kategori Tujuan <span class="opt-tag">(Opsional)</span></label>
+                            <input type="text" id="autolink-target-category" class="form-control" placeholder="Kosongkan jika ingin dibuatkan otomatis">
+                            <div class="form-hint"><i class='bx bx-info-circle'></i> Kosongkan agar bot otomatis membuat kategori baru dengan nama yang sama.</div>
+                        </div>
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="autolink-category-name">Label Kategori di Dashboard <span class="opt-tag">(Opsional)</span></label>
+                            <input type="text" id="autolink-category-name" class="form-control" placeholder="e.g. Akademi Crypto / Kelas Xander">
+                            <div class="form-hint"><i class='bx bx-info-circle'></i> Kosongkan jika ingin memakai nama persis dari kategori server sumber.</div>
+                        </div>
+                        <div class="form-group" style="display:flex; flex-direction:column; justify-content:center;">
+                            <label style="cursor:pointer; display:flex; align-items:center; gap:8px; margin-top:14px;">
+                                <input type="checkbox" id="autolink-autosync" checked style="width:18px; height:18px; accent-color:#6366f1;">
+                                <span style="font-weight:600; color:var(--text-primary);">Aktifkan Realtime Auto-Sync</span>
+                            </label>
+                            <div class="form-hint" style="margin-top:4px;"><i class='bx bx-check-shield'></i> Otomatis deteksi & buat channel baru jika server sumber menambah channel nanti!</div>
+                        </div>
+                    </div>
+
+                    <!-- Preview Container -->
+                    <div id="autolink-preview-container" style="display:none; margin-top:16px;">
+                        <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:12px 16px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                <strong id="autolink-preview-title" style="font-size:0.9rem; color:var(--text-primary);">Daftar Channel Ditemukan:</strong>
+                                <span id="autolink-preview-badge" class="tag" style="background:rgba(99,102,241,0.2); color:#818cf8;">0 Channels</span>
+                            </div>
+                            <div id="autolink-preview-list" style="max-height:160px; overflow-y:auto; font-size:0.84rem; font-family:monospace; color:var(--text-secondary); padding:6px; line-height:1.6;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Progress / Log Container -->
+                    <div id="autolink-progress-container" style="display:none; margin-top:16px;">
+                        <div style="margin-bottom:6px; display:flex; justify-content:space-between; font-size:0.85rem;">
+                            <span id="autolink-progress-label">Menghubungkan...</span>
+                            <span id="autolink-progress-pct" style="font-weight:600; color:#818cf8;">0%</span>
+                        </div>
+                        <div style="width:100%; height:8px; background:rgba(255,255,255,0.1); border-radius:4px; overflow:hidden;">
+                            <div id="autolink-progress-bar" style="width:0%; height:100%; background:linear-gradient(90deg, #6366f1, #a855f7); transition: width 0.3s;"></div>
+                        </div>
+                        <div id="autolink-log" style="margin-top:10px; max-height:140px; overflow-y:auto; font-family:monospace; font-size:0.78rem; background:rgba(0,0,0,0.4); padding:10px; border-radius:6px; border:1px solid rgba(255,255,255,0.05); color:#a7f3d0;">
+                        </div>
+                    </div>
+
+                    <div class="modal-footer" style="margin-top:20px; display:flex; justify-content:flex-end; gap:10px;">
+                        <button type="button" class="btn-secondary" id="btn-autolink-preview"><i class='bx bx-search'></i> Preview Channel</button>
+                        <button type="submit" class="btn-primary" id="btn-autolink-start" style="background:linear-gradient(135deg, #6366f1, #a855f7); border:none;"><i class='bx bx-rocket'></i> Mulai Auto-Link & Provisioning</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Bot Pool Manager -->
+    <div id="modal-botpool" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-botpool-title">
+        <div class="modal-content" style="max-width: 650px;">
+            <div class="modal-header">
+                <h2 id="modal-botpool-title"><i class='bx bxl-discord' style="color:#5865f2;"></i> Discord Bot Pool (Server Tujuan)</h2>
+                <span class="close-modal" data-modal="modal-botpool">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-hint" style="margin-bottom:14px; font-size:0.86rem; line-height:1.5;">
+                    Pasang <b>3–4 Bot Discord resmi</b> untuk membagi beban pembuatan Channel & Webhook di server tujuan secara rotasi agar <b>tidak terkena limit Discord API rate-limit</b>. Pastikan bot sudah diundang ke server tujuan dengan hak akses <i>Administrator</i> / <i>Manage Channels & Webhooks</i>.
+                </div>
+
+                <form id="form-add-botpool" style="display:flex; gap:10px; margin-bottom:18px;">
+                    <input type="password" id="input-new-bot-token" class="form-control" placeholder="Masukkan Discord Bot Token..." required style="flex:1;">
+                    <button type="submit" class="btn-primary" id="btn-save-bot-token"><i class='bx bx-plus'></i> Tambah Bot</button>
+                </form>
+
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Bot Name</th>
+                                <th>Bot ID</th>
+                                <th>Token</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="botpool-table-body">
+                            <!-- Populated by script.js -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Rename Category -->
+    <div id="modal-rename-category" class="modal" role="dialog" aria-modal="true">
+        <div class="modal-content" style="max-width: 440px;">
+            <div class="modal-header">
+                <h2><i class='bx bx-edit'></i> Ubah Nama Kategori</h2>
+                <span class="close-modal" data-modal="modal-rename-category">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="form-rename-category">
+                    <input type="hidden" id="rename-cat-old">
+                    <div class="form-group">
+                        <label for="rename-cat-new">Nama Baru Kategori <span class="req-star">*</span></label>
+                        <input type="text" id="rename-cat-new" class="form-control" required placeholder="e.g. Akademi Crypto">
+                    </div>
+                    <div class="modal-footer" style="margin-top:16px; display:flex; justify-content:flex-end; gap:8px;">
+                        <button type="button" class="btn-secondary" onclick="closeModal('modal-rename-category')">Batal</button>
+                        <button type="submit" class="btn-primary">Simpan Nama</button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 

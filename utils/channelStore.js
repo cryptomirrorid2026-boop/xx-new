@@ -59,9 +59,10 @@ class ChannelStore {
         const raw = JSON.parse(fs.readFileSync(CHANNELS_FILE, 'utf-8'));
         if (Array.isArray(raw)) {
           this.channels = raw.map(ch => ({
+            category:  ch.category ? String(ch.category).trim() : 'General',
             name:      ch.name     || `channel-${Date.now()}`,
             discordId: String(ch.discordId),
-            tgChatId:  String(ch.tgChatId),
+            tgChatId:  String(ch.tgChatId || ''),
             botKey:    String(ch.botKey   || '1'),
             threadId:  ch.threadId ? String(ch.threadId) : null,
             dcWebhookUrl: ch.dcWebhookUrl || null,
@@ -98,12 +99,13 @@ class ChannelStore {
     this._map.clear();
 
     for (const ch of this.channels) {
-      // Validasi botKey jika tgManager tersedia
-      if (this._tgManager && !this._tgManager.get(ch.botKey)) {
+      // Validasi botKey jika tgManager tersedia dan bukan hanya DC->DC
+      if (!ch.dcWebhookUrl && this._tgManager && !this._tgManager.get(ch.botKey)) {
         logger.warn(`channelStore: Bot #${ch.botKey} tidak ditemukan, skip "${ch.name}"`);
         continue;
       }
       this._map.set(ch.discordId, {
+        category:   ch.category || 'General',
         tgChatId:   ch.tgChatId,
         botKey:     ch.botKey,
         tgThreadId: ch.threadId || null,
@@ -204,13 +206,14 @@ class ChannelStore {
 
   /**
    * Tambah atau update channel.
-   * @param {{ name, discordId, tgChatId, botKey, threadId }} channel
+   * @param {{ name, discordId, tgChatId, botKey, threadId, category }} channel
    */
   add(channel) {
     const ch = {
+      category:  channel.category ? String(channel.category).trim() : 'General',
       name:      channel.name      || `channel-${this.channels.length + 1}`,
       discordId: String(channel.discordId),
-      tgChatId:  String(channel.tgChatId),
+      tgChatId:  String(channel.tgChatId || ''),
       botKey:    String(channel.botKey  || '1'),
       threadId:  channel.threadId ? String(channel.threadId) : null,
       dcWebhookUrl: channel.dcWebhookUrl || null,
@@ -254,9 +257,97 @@ class ChannelStore {
     return this.channels.find(c => c.discordId === String(discordId)) || null;
   }
 
+  /** Alias untuk find() agar kompatibel */
+  get(discordId) {
+    return this.find(discordId);
+  }
+
   /** Daftar semua channel (copy array) */
   list() {
     return [...this.channels];
+  }
+
+  /**
+   * Ambil daftar kategori unik beserta jumlah channelnya
+   * @returns {Array<{ name: string, count: number }>}
+   */
+  listCategories() {
+    const counts = {};
+    for (const ch of this.channels) {
+      const cat = ch.category || 'General';
+      counts[cat] = (counts[cat] || 0) + 1;
+    }
+    return Object.entries(counts).map(([name, count]) => ({ name, count }));
+  }
+
+  /**
+   * Ambil semua channel di kategori tertentu
+   * @param {string} categoryName 
+   */
+  getByCategory(categoryName) {
+    const target = String(categoryName || '').toLowerCase().trim();
+    return this.channels.filter(c => (c.category || 'General').toLowerCase().trim() === target);
+  }
+
+  /**
+   * Hapus semua channel di bawah sebuah kategori
+   * @param {string} categoryName 
+   * @returns {number} jumlah channel yang dihapus
+   */
+  deleteCategory(categoryName) {
+    const target = String(categoryName || '').toLowerCase().trim();
+    const before = this.channels.length;
+    this.channels = this.channels.filter(c => (c.category || 'General').toLowerCase().trim() !== target);
+    const count = before - this.channels.length;
+    if (count > 0) {
+      this._save();
+      this._rebuildMap();
+    }
+    return count;
+  }
+
+  /**
+   * Ganti nama kategori untuk semua channel di dalamnya
+   * @param {string} oldName 
+   * @param {string} newName 
+   */
+  renameCategory(oldName, newName) {
+    const from = String(oldName || '').toLowerCase().trim();
+    const to = String(newName || '').trim() || 'General';
+    let changed = 0;
+    for (const ch of this.channels) {
+      if ((ch.category || 'General').toLowerCase().trim() === from) {
+        ch.category = to;
+        changed++;
+      }
+    }
+    if (changed > 0) {
+      this._save();
+      this._rebuildMap();
+    }
+    return changed;
+  }
+
+  /**
+   * Mute atau unmute seluruh channel di bawah sebuah kategori
+   * @param {string} categoryName 
+   * @param {boolean} shouldMute 
+   */
+  muteCategory(categoryName, shouldMute = true) {
+    const mutedChannels = require('./mutedChannels');
+    const target = String(categoryName || '').toLowerCase().trim();
+    const affected = [];
+    for (const ch of this.channels) {
+      if ((ch.category || 'General').toLowerCase().trim() === target) {
+        if (shouldMute) {
+          mutedChannels.add(ch.discordId);
+        } else {
+          mutedChannels.remove(ch.discordId);
+        }
+        affected.push(ch.discordId);
+      }
+    }
+    return affected;
   }
 
   get size() { return this.channels.length; }

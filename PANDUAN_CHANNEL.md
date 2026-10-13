@@ -144,3 +144,39 @@ Gunakan `/testmirror` untuk cek. Jika ada yang gagal, periksa:
 Edit `data/channels.json` → simpan → **bot langsung apply tanpa restart!**
 
 Tidak perlu `pm2 restart` setiap kali tambah/hapus channel.
+
+---
+
+## ⚡ FITUR BARU: AUTO-LINK CATEGORY (DC ➔ DC MIRROR)
+
+Kini kamu tidak perlu lagi membuat channel, membuat webhook, dan mengisi ID channel satu per satu secara manual.
+
+### 🚀 Cara Menggunakan:
+1. **Daftarkan Bot Pool (3–4 Bot Resmi):**
+   - Di dashboard, klik tombol **"Bot Pool"** (atau ikon Discord).
+   - Masukkan token Discord Bot resmi Anda (buat di Discord Developer Portal).
+   - Pastikan bot-bot tersebut sudah diundang ke server tujuan dengan izin *Administrator / Manage Channels & Webhooks*.
+   - Bot Pool akan berotasi otomatis membuat channel & webhook agar terhindar dari *Discord rate limit*.
+
+2. **Jalankan Auto-Link Category:**
+   - Klik tombol **"Auto-Link Category"** di dashboard.
+   - Masukkan **ID Server Sumber** (akun user token Anda wajib sudah join ke server ini).
+   - Masukkan **ID Kategori Sumber**.
+   - Masukkan **ID Server Tujuan**.
+   - *(Opsional)* ID Kategori Tujuan (kosongkan jika ingin dibuatkan otomatis dengan nama yang sama).
+   - *(Opsional)* Label Kategori (misal: "Akademi Crypto", "Kelas Xander").
+   - Centang **"Aktifkan Realtime Auto-Sync"**.
+   - Klik **"Preview Channel"** untuk melihat daftar channel yang ditemukan.
+   - Klik **"Mulai Auto-Link & Provisioning"**.
+   - Bot otomatis membuat seluruh channel tujuan, memasang webhook, dan mendaftarkan mappingnya secara rapi!
+
+3. **Realtime Auto-Sync Channel Baru:**
+   - Jika admin server sumber menambahkan channel baru di kategori tersebut, bot akan langsung mendeteksi event tersebut secara realtime!
+   - Channel baru dan Webhook baru di server tujuan akan otomatis dibuatkan dan langsung aktif tanpa Anda perlu membuka dashboard.
+
+4. **Pengelompokan Rapi & Aksi Massal per Kategori:**
+   - Channel di dashboard kini tertata rapi dalam kelompok folder/kategori (`Akademi Crypto`, `Kelas Xander`, dll).
+   - Dapat di-**Expand / Collapse** per kategori.
+   - Tersedia tombol **Search & Filter Dropdown**.
+   - Tersedia tombol **Mute All**, **Rename**, dan **Delete Category** untuk menghapus seluruh channel dalam satu kelas sekaligus dengan sekali klik!
+
