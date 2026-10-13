@@ -33,15 +33,17 @@ const fs     = require('fs');
 const path   = require('path');
 const logger = require('./logger');
 
-const CHANNELS_FILE = path.join(__dirname, '..', 'data', 'channels.json');
+const CHANNELS_FILE   = path.join(__dirname, '..', 'data', 'channels.json');
+const CATEGORIES_FILE = path.join(__dirname, '..', 'data', 'categories.json');
 
 class ChannelStore {
   constructor() {
-    this.channels   = [];   // Array of channel objects
-    this._map       = null; // Reference ke Map utama bot (diisi via attachMap)
-    this._tgManager = null; // Reference ke tgManager (untuk validasi botKey)
-    this._watcher   = null;
-    this._debounce  = null;
+    this.channels         = [];   // Array of channel objects
+    this.customCategories = new Set(['General']); // Set of category names
+    this._map             = null; // Reference ke Map utama bot (diisi via attachMap)
+    this._tgManager       = null; // Reference ke tgManager (untuk validasi botKey)
+    this._watcher         = null;
+    this._debounce        = null;
     this._ensureDir();
     this._load();
   }
@@ -79,7 +81,26 @@ class ChannelStore {
     } catch (err) {
       logger.warn('channelStore: gagal baca channels.json', err.message);
     }
+
+    try {
+      if (fs.existsSync(CATEGORIES_FILE)) {
+        const catRaw = JSON.parse(fs.readFileSync(CATEGORIES_FILE, 'utf-8'));
+        if (Array.isArray(catRaw)) {
+          catRaw.forEach(c => { if (c) this.customCategories.add(String(c).trim()); });
+        }
+      }
+    } catch (_) {}
+
     return false;
+  }
+
+  _saveCategories() {
+    try {
+      this._ensureDir();
+      fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(Array.from(this.customCategories), null, 2), 'utf-8');
+    } catch (err) {
+      logger.warn('channelStore: gagal simpan categories.json', err.message);
+    }
   }
 
   _save() {
@@ -232,6 +253,9 @@ class ChannelStore {
       this.channels.push(ch);  // Tambah baru
     }
 
+    this.customCategories.add(ch.category);
+    this._saveCategories();
+
     this._save();
     this._rebuildMap();
     return ch;
@@ -273,11 +297,51 @@ class ChannelStore {
    */
   listCategories() {
     const counts = {};
+    for (const cat of this.customCategories) {
+      counts[cat] = 0;
+    }
     for (const ch of this.channels) {
       const cat = ch.category || 'General';
       counts[cat] = (counts[cat] || 0) + 1;
     }
     return Object.entries(counts).map(([name, count]) => ({ name, count }));
+  }
+
+  /**
+   * Buat kategori baru (meski belum ada channel di dalamnya)
+   * @param {string} categoryName 
+   */
+  createCategory(categoryName) {
+    const name = String(categoryName || '').trim();
+    if (!name) throw new Error('Nama kategori tidak boleh kosong');
+    this.customCategories.add(name);
+    this._saveCategories();
+    return name;
+  }
+
+  /**
+   * Pindahkan sejumlah channel ke kategori tertentu
+   * @param {Array<string>} channelIds 
+   * @param {string} targetCategory 
+   * @returns {number} jumlah channel yang dipindahkan
+   */
+  moveChannels(channelIds, targetCategory) {
+    const toCat = String(targetCategory || '').trim() || 'General';
+    const idSet = new Set(channelIds.map(String));
+    let moved = 0;
+    for (const ch of this.channels) {
+      if (idSet.has(ch.discordId)) {
+        ch.category = toCat;
+        moved++;
+      }
+    }
+    this.customCategories.add(toCat);
+    this._saveCategories();
+    if (moved > 0) {
+      this._save();
+      this._rebuildMap();
+    }
+    return moved;
   }
 
   /**
@@ -298,6 +362,12 @@ class ChannelStore {
     const target = String(categoryName || '').toLowerCase().trim();
     const before = this.channels.length;
     this.channels = this.channels.filter(c => (c.category || 'General').toLowerCase().trim() !== target);
+    for (const c of this.customCategories) {
+      if (c.toLowerCase().trim() === target) {
+        this.customCategories.delete(c);
+      }
+    }
+    this._saveCategories();
     const count = before - this.channels.length;
     if (count > 0) {
       this._save();
@@ -321,6 +391,13 @@ class ChannelStore {
         changed++;
       }
     }
+    for (const c of this.customCategories) {
+      if (c.toLowerCase().trim() === from) {
+        this.customCategories.delete(c);
+        this.customCategories.add(to);
+      }
+    }
+    this._saveCategories();
     if (changed > 0) {
       this._save();
       this._rebuildMap();

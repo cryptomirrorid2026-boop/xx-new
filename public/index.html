@@ -12,7 +12,7 @@
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="style.css?v=5">
+    <link rel="stylesheet" href="style.css?v=5.2.1">
 </head>
 <body>
     <div class="app-container">
@@ -312,6 +312,7 @@
                             <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 2px;">Kelola mapping channel secara berkelompok per kategori/kelas agar rapi dan terorganisir.</p>
                         </div>
                         <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                            <button class="btn-primary" id="btn-create-category-modal" style="background: linear-gradient(135deg, #0ea5e9, #2563eb); border: none; box-shadow: 0 4px 14px rgba(14,165,233,0.35);"><i class='bx bx-folder-plus'></i> + New Category</button>
                             <button class="btn-primary" id="btn-autolink-modal" style="background: linear-gradient(135deg, #6366f1, #a855f7); border: none; box-shadow: 0 4px 14px rgba(99,102,241,0.35);"><i class='bx bx-link-alt'></i> Auto-Link Category</button>
                             <button class="btn-secondary" id="btn-open-botpool" style="border: 1px solid rgba(255,255,255,0.15);"><i class='bx bxl-discord'></i> Bot Pool</button>
                             <button class="btn-primary" id="btn-add-channel"><i class='bx bx-plus'></i> Add Channel</button>
@@ -1549,6 +1550,43 @@
         </div>
     </div>
 
+    <!-- Modal Create Category -->
+    <div id="modal-create-category" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-create-cat-title">
+        <div class="modal-content" style="max-width: 580px;">
+            <div class="modal-header">
+                <h2 id="modal-create-cat-title"><i class='bx bx-folder-plus' style="color:#0ea5e9;"></i> Buat Kategori Baru</h2>
+                <span class="close-modal" data-modal="modal-create-category">&times;</span>
+            </div>
+            <form id="form-create-category">
+                <div class="modal-body">
+                    <div class="form-group" style="margin-bottom:16px;">
+                        <label for="create-cat-name">Nama Kategori Baru <span class="req-star">*</span></label>
+                        <input type="text" id="create-cat-name" class="form-control" required placeholder="e.g. Akademi Crypto / Kelas Xander">
+                        <div class="form-hint"><i class='bx bx-info-circle'></i> Folder kategori baru ini akan langsung muncul di dashboard channel.</div>
+                    </div>
+
+                    <div class="form-group">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                            <label style="margin:0; font-size:0.88rem; font-weight:600;">
+                                Pindahkan Channel ke Kategori Ini <span class="opt-tag">(Opsional)</span>
+                            </label>
+                            <span id="create-cat-selected-count" style="font-size:0.75rem; color:#0ea5e9; font-weight:600;">0 dipilih</span>
+                        </div>
+                        <input type="text" id="create-cat-search-ch" class="form-control" placeholder="Cari channel yang ingin dipindahkan..." style="margin-bottom:8px; padding:6px 12px; font-size:0.82rem;">
+                        <div id="create-cat-channel-list" style="max-height:190px; overflow-y:auto; background:rgba(0,0,0,0.25); border:1px solid var(--border-color); border-radius:8px; padding:8px;">
+                            <!-- Populated by script.js with checkboxes -->
+                        </div>
+                        <div class="form-hint" style="margin-top:6px;"><i class='bx bx-check-square'></i> Centang channel dari "General" yang ingin kamu masukkan ke kategori ini sekarang. Kosongkan jika belum ada channel.</div>
+                    </div>
+                </div>
+                <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:8px;">
+                    <button type="button" class="btn-ghost close-modal" data-modal="modal-create-category">Batal</button>
+                    <button type="submit" class="btn-primary" style="background:linear-gradient(135deg, #0ea5e9, #2563eb); border:none;"><i class='bx bx-check'></i> Buat Kategori</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Modal Rename Category -->
     <div id="modal-rename-category" class="modal" role="dialog" aria-modal="true">
         <div class="modal-content" style="max-width: 440px;">
@@ -2080,6 +2118,6 @@
       </div>
     </template>
 
-    <script src="script.js?v=5"></script>
+    <script src="script.js?v=5.2.1"></script>
 </body>
 </html>

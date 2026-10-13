@@ -315,6 +315,32 @@ function startWebServer(tgManager, channelMap, port = 5080, tg2dcStore = null) {
     res.json(channelStore.listCategories());
   });
 
+  app.post('/api/categories', (req, res) => {
+    const { name, channelIds } = req.body;
+    if (!name || !name.trim()) return res.status(400).json({ error: 'Nama kategori wajib diisi' });
+    try {
+      const catName = channelStore.createCategory(name.trim());
+      let movedCount = 0;
+      if (Array.isArray(channelIds) && channelIds.length > 0) {
+        movedCount = channelStore.moveChannels(channelIds, catName);
+      }
+      pushEvent('success', `Kategori baru <b>${catName}</b> berhasil dibuat${movedCount > 0 ? ` (${movedCount} channel dipindahkan)` : ''}`);
+      res.json({ success: true, name: catName, movedCount });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/categories/:name/move', (req, res) => {
+    const { channelIds } = req.body;
+    if (!Array.isArray(channelIds) || channelIds.length === 0) {
+      return res.status(400).json({ error: 'channelIds wajib berupa array ID channel' });
+    }
+    const moved = channelStore.moveChannels(channelIds, req.params.name);
+    pushEvent('info', `<b>${moved} channel</b> dipindahkan ke kategori <b>${req.params.name}</b>`);
+    res.json({ success: true, moved });
+  });
+
   app.delete('/api/categories/:name', (req, res) => {
     const catName = req.params.name;
     const count = channelStore.deleteCategory(catName);

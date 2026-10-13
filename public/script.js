@@ -441,6 +441,7 @@ setInterval(async () => {
 // ─── Channels ─────────────────────────────────────────────────
 // ─── Channels & Categorization ──────────────────────────────────
 let allChannelsData = [];
+let allCustomCategories = [];
 let allMutedSet = new Set();
 let currentCategoryFilter = 'all';
 let currentSearchQuery = '';
@@ -452,16 +453,23 @@ function saveCollapsedState() {
 
 async function loadChannels() {
     try {
-        const [channels, muteRes] = await Promise.all([
+        const [channels, muteRes, catsRes] = await Promise.all([
             fetch(`${API}/channels`).then(r => r.json()),
-            fetch(`${API}/mute`).catch(() => ({ json: () => [] }))
+            fetch(`${API}/mute`).catch(() => ({ json: () => [] })),
+            fetch(`${API}/categories`).catch(() => ({ json: () => [] }))
         ]);
         const mutedList = await muteRes.json().catch(() => []);
         allMutedSet = new Set(mutedList);
         allChannelsData = Array.isArray(channels) ? channels : [];
+        allCustomCategories = Array.isArray(catsRes) ? catsRes : [];
+
+        // Gabungkan semua kategori unik (dari channels dan dari custom categories)
+        const catNames = new Set(['General']);
+        allCustomCategories.forEach(c => { if (c.name) catNames.add(c.name); });
+        allChannelsData.forEach(c => { catNames.add(c.category || 'General'); });
+        const distinctCats = Array.from(catNames).sort();
 
         // Update Category Datalist untuk autocomplete di form Add Channel
-        const distinctCats = Array.from(new Set(allChannelsData.map(c => c.category || 'General'))).sort();
         const datalist = document.getElementById('category-datalist');
         if (datalist) {
             datalist.innerHTML = distinctCats.map(cat => `<option value="${cat}">`).join('');
@@ -472,6 +480,7 @@ async function loadChannels() {
         if (catFilter) {
             const currentVal = catFilter.value || currentCategoryFilter;
             const counts = {};
+            distinctCats.forEach(c => counts[c] = 0);
             allChannelsData.forEach(c => {
                 const k = c.category || 'General';
                 counts[k] = (counts[k] || 0) + 1;
@@ -500,6 +509,12 @@ function renderGroupedChannels() {
     const container = document.getElementById('channels-category-container');
     if (!container) return;
 
+    // Kategori unik
+    const catNames = new Set(['General']);
+    allCustomCategories.forEach(c => { if (c.name) catNames.add(c.name); });
+    allChannelsData.forEach(c => { catNames.add(c.category || 'General'); });
+    const distinctCats = Array.from(catNames).sort();
+
     // Filter data berdasarkan Kategori & Search Query
     const query = currentSearchQuery.toLowerCase().trim();
     const filtered = allChannelsData.filter(ch => {
@@ -517,29 +532,34 @@ function renderGroupedChannels() {
         );
     });
 
-    if (!filtered.length) {
-        container.innerHTML = `
-            <div class="glass-card" style="text-align:center; padding:40px 20px; color:var(--text-secondary);">
-                <i class='bx bx-search-alt' style="font-size:2.5rem; opacity:0.5; margin-bottom:8px;"></i>
-                <div style="font-weight:600; font-size:1rem; color:var(--text-primary); margin-bottom:4px;">
-                    ${allChannelsData.length === 0 ? 'Belum Ada Channel Mapping' : 'Tidak Ada Channel yang Cocok'}
-                </div>
-                <div style="font-size:0.85rem;">
-                    ${allChannelsData.length === 0 
-                        ? 'Gunakan tombol <b>Auto-Link Category</b> atau <b>Add Channel</b> untuk mulai menambahkan mapping.' 
-                        : 'Coba ubah kata kunci pencarian atau pilih filter kategori lain.'}
-                </div>
-            </div>`;
-        return;
-    }
-
-    // Kelompokkan per Kategori
+    // Inisialisasi groups dengan seluruh kategori yang terdaftar
     const groups = new Map();
+    distinctCats.forEach(cat => {
+        const matchCat = currentCategoryFilter === 'all' || cat.toLowerCase() === currentCategoryFilter.toLowerCase();
+        if (matchCat) {
+            groups.set(cat, []);
+        }
+    });
+
     filtered.forEach(ch => {
         const cat = ch.category || 'General';
         if (!groups.has(cat)) groups.set(cat, []);
         groups.get(cat).push(ch);
     });
+
+    if (groups.size === 0) {
+        container.innerHTML = `
+            <div class="glass-card" style="text-align:center; padding:40px 20px; color:var(--text-secondary);">
+                <i class='bx bx-search-alt' style="font-size:2.5rem; opacity:0.5; margin-bottom:8px;"></i>
+                <div style="font-weight:600; font-size:1rem; color:var(--text-primary); margin-bottom:4px;">
+                    Tidak Ada Channel atau Kategori yang Cocok
+                </div>
+                <div style="font-size:0.85rem;">
+                    Coba ubah kata kunci pencarian atau pilih filter kategori lain.
+                </div>
+            </div>`;
+        return;
+    }
 
     container.innerHTML = '';
 
@@ -551,7 +571,7 @@ function renderGroupedChannels() {
         card.dataset.category = catName;
 
         // Cek apakah seluruh channel di kategori ini di-mute
-        const allMuted = channels.every(c => allMutedSet.has(c.discordId));
+        const allMuted = channels.length > 0 && channels.every(c => allMutedSet.has(c.discordId));
 
         card.innerHTML = `
             <div class="category-group-header" title="Klik untuk expand / collapse">
@@ -563,18 +583,31 @@ function renderGroupedChannels() {
                     <span class="category-count-badge">${channels.length} Channels</span>
                 </div>
                 <div class="category-header-actions" onclick="event.stopPropagation()">
+                    <button class="btn-primary btn-sm btn-quick-add-to-cat" data-category="${escapeHtml(catName)}" title="Tambah Channel Baru ke Kategori ${escapeHtml(catName)}" style="font-size:0.75rem; padding:4px 10px; background: rgba(14,165,233,0.15); color: #38bdf8; border:1px solid rgba(14,165,233,0.3);">
+                        <i class='bx bx-plus'></i> Add Channel
+                    </button>
+                    ${channels.length > 0 ? `
                     <button class="btn-secondary btn-sm btn-cat-mute" data-category="${escapeHtml(catName)}" data-muted="${allMuted}" title="${allMuted ? 'Unmute Seluruh Kategori' : 'Mute Seluruh Kategori'}" style="font-size:0.75rem; padding:4px 9px;">
                         <i class='bx ${allMuted ? 'bx-volume-full' : 'bx-volume-mute'}'></i> ${allMuted ? 'Unmute All' : 'Mute All'}
-                    </button>
+                    </button>` : ''}
                     <button class="btn-secondary btn-sm btn-cat-rename" data-category="${escapeHtml(catName)}" title="Ubah Nama Kategori" style="font-size:0.75rem; padding:4px 9px;">
                         <i class='bx bx-edit'></i> Rename
                     </button>
-                    <button class="btn-danger btn-sm btn-cat-delete" data-category="${escapeHtml(catName)}" data-count="${channels.length}" title="Hapus Seluruh Kategori & Channel di dalamnya" style="font-size:0.75rem; padding:4px 9px;">
+                    ${catName !== 'General' ? `
+                    <button class="btn-danger btn-sm btn-cat-delete" data-category="${escapeHtml(catName)}" data-count="${channels.length}" title="Hapus Kategori & Channel di dalamnya" style="font-size:0.75rem; padding:4px 9px;">
                         <i class='bx bx-trash'></i> Delete
-                    </button>
+                    </button>` : ''}
                 </div>
             </div>
             <div class="category-group-body">
+                ${channels.length === 0 ? `
+                <div style="text-align:center; padding:32px 16px; color:var(--text-secondary); font-size:0.86rem; background:rgba(0,0,0,0.15);">
+                    <i class='bx bx-folder' style="font-size:2.2rem; opacity:0.35; margin-bottom:6px;"></i><br>
+                    Belum ada channel di kategori <b>"${escapeHtml(catName)}"</b>.<br>
+                    <button class="btn-primary btn-sm btn-quick-add-to-cat" data-category="${escapeHtml(catName)}" style="margin-top:12px; font-size:0.82rem; padding:6px 14px; background:linear-gradient(135deg, #0ea5e9, #2563eb); border:none;">
+                        <i class='bx bx-plus'></i> Tambah Channel ke Kategori Ini
+                    </button>
+                </div>` : `
                 <div class="table-responsive no-padding">
                     <table class="data-table">
                         <thead>
@@ -624,7 +657,7 @@ function renderGroupedChannels() {
                             }).join('')}
                         </tbody>
                     </table>
-                </div>
+                </div>`}
             </div>
         `;
 
@@ -648,6 +681,19 @@ function renderGroupedChannels() {
 }
 
 function attachChannelActionListeners() {
+    // Quick Add Channel to Category
+    document.querySelectorAll('.btn-quick-add-to-cat').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const cat = btn.dataset.category || 'General';
+            currentEditingChannelId = null;
+            document.getElementById('modal-channel-title').textContent = `Add Mapping ke ${cat}`;
+            document.getElementById('form-channel').reset();
+            document.getElementById('ch-category').value = cat;
+            openModal('modal-channel');
+        });
+    });
+
     // Mute channel satuan
     document.querySelectorAll('.btn-mute').forEach(btn => {
         btn.addEventListener('click', async () => {
@@ -826,6 +872,90 @@ if (formRenameCat) {
                 showToast(d.error || 'Gagal mengubah nama kategori', 'error');
             }
         } catch { showToast('Connection error', 'error'); }
+    });
+}
+
+// ─── Create Category Modal Handler ─────────────────────────────
+const btnCreateCatModal = document.getElementById('btn-create-category-modal');
+if (btnCreateCatModal) {
+    btnCreateCatModal.addEventListener('click', () => {
+        document.getElementById('form-create-category').reset();
+        document.getElementById('create-cat-selected-count').textContent = '0 dipilih';
+        
+        // Render daftar channel yang bisa dipindahkan
+        const listContainer = document.getElementById('create-cat-channel-list');
+        if (listContainer) {
+            if (allChannelsData.length === 0) {
+                listContainer.innerHTML = '<div style="color:var(--text-secondary); text-align:center; padding:12px; font-size:0.8rem;">Belum ada channel mapping yang terdaftar.</div>';
+            } else {
+                listContainer.innerHTML = allChannelsData.map(ch => `
+                    <label class="cat-ch-item" style="display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:6px; cursor:pointer; font-size:0.82rem; margin-bottom:2px; transition: background 0.15s ease;" onmouseover="this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.background='transparent'">
+                        <input type="checkbox" class="ch-move-checkbox" value="${escapeHtml(ch.discordId)}" style="cursor:pointer;">
+                        <span style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                            <b>${escapeHtml(ch.name || ch.discordId)}</b>
+                            <span style="color:var(--text-secondary); font-size:0.75rem; margin-left:6px;">(${escapeHtml(ch.category || 'General')})</span>
+                        </span>
+                    </label>
+                `).join('');
+
+                // Update selected counter saat checkbox diklik
+                listContainer.querySelectorAll('.ch-move-checkbox').forEach(cb => {
+                    cb.addEventListener('change', () => {
+                        const checked = listContainer.querySelectorAll('.ch-move-checkbox:checked').length;
+                        document.getElementById('create-cat-selected-count').textContent = `${checked} dipilih`;
+                    });
+                });
+            }
+        }
+
+        openModal('modal-create-category');
+    });
+}
+
+// Search channel inside create category modal
+const searchChInCat = document.getElementById('create-cat-search-ch');
+if (searchChInCat) {
+    searchChInCat.addEventListener('input', e => {
+        const q = e.target.value.toLowerCase().trim();
+        const items = document.querySelectorAll('#create-cat-channel-list .cat-ch-item');
+        items.forEach(it => {
+            const text = it.textContent.toLowerCase();
+            it.style.display = text.includes(q) ? 'flex' : 'none';
+        });
+    });
+}
+
+// Form Create Category Submit
+const formCreateCat = document.getElementById('form-create-category');
+if (formCreateCat) {
+    formCreateCat.addEventListener('submit', async e => {
+        e.preventDefault();
+        const catName = document.getElementById('create-cat-name').value.trim();
+        if (!catName) {
+            showToast('Nama kategori tidak boleh kosong', 'warning');
+            return;
+        }
+
+        const selectedIds = Array.from(document.querySelectorAll('#create-cat-channel-list .ch-move-checkbox:checked'))
+            .map(cb => cb.value);
+
+        try {
+            const r = await fetch(`${API}/categories`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: catName, channelIds: selectedIds })
+            });
+            const d = await r.json();
+            if (r.ok && d.success) {
+                showToast(`Kategori "${catName}" berhasil dibuat!${d.movedCount > 0 ? ` (${d.movedCount} channel dipindahkan)` : ''}`, 'success');
+                closeModal('modal-create-category');
+                await loadChannels();
+            } else {
+                showToast(d.error || 'Gagal membuat kategori', 'error');
+            }
+        } catch {
+            showToast('Connection error', 'error');
+        }
     });
 }
 
