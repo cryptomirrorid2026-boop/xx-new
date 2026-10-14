@@ -170,13 +170,24 @@ Kini kamu tidak perlu lagi membuat channel, membuat webhook, dan mengisi ID chan
    - Klik **"Mulai Auto-Link & Provisioning"**.
    - Bot otomatis membuat seluruh channel tujuan, memasang webhook, dan mendaftarkan mappingnya secara rapi!
 
-3. **Realtime Auto-Sync Channel Baru:**
-   - Jika admin server sumber menambahkan channel baru di kategori tersebut, bot akan langsung mendeteksi event tersebut secara realtime!
-   - Channel baru dan Webhook baru di server tujuan akan otomatis dibuatkan dan langsung aktif tanpa Anda perlu membuka dashboard.
+3. **Realtime Auto-Sync Penuh (Tambah, Rename, & Kurang):**
+   - **➕ Channel Baru (Auto-Add):** Jika admin server sumber menambahkan channel baru di kategori tersebut, bot langsung membuat channel tujuan & webhook otomatis.
+   - **✏️ Ganti Nama (Auto-Rename):** Jika channel di server sumber diubah namanya, bot langsung mengganti nama channel tujuan agar 100% mirip dan identik ("biar sama persis").
+   - **🗑️ Channel Dihapus (Auto-Reduce):** Jika channel di server sumber dihapus, bot otomatis menghapus channel tujuan di Discord dan membersihkan mappingnya di sistem ("mengurangi secara otomatis").
 
-4. **Pengelompokan Rapi & Aksi Massal per Kategori:**
+4. **Fitur Rekonsiliasi & Perbandingan Cerdas (Anti-Skip):**
+   - Di modal **Auto-Link Category**, klik tombol **"Bandingkan & Periksa Channel"**.
+   - Sistem akan membandingkan channel sumber dan tujuan secara visual:
+     * 🟢 **Cocok & Terhubung (Identik):** Channel sudah sama persis.
+     * 🟡 **Perlu Disamakan Namanya (Auto-Rename):** Menampilkan nama lama vs nama baru.
+     * 🔵 **Channel Kurang (Auto-Add):** Channel yang akan dibuat otomatis beserta webhooknya.
+     * 🔴 **Channel Terhapus (Auto-Reduce):** Channel yang akan dikurangi/dibersihkan otomatis.
+   - Klik **"Mulai Sinkronisasi & Auto-Link"** untuk menjalankan penyelarasan dengan proteksi **Zero-Skip** (jika terkena jeda limit Discord, bot akan antre otomatis dan mengulang putaran kedua hingga 100% tuntas tanpa ada yang terlewati).
+
+5. **Pengelompokan Rapi & Aksi Massal per Kategori:**
    - Channel di dashboard kini tertata rapi dalam kelompok folder/kategori (`Akademi Crypto`, `Kelas Xander`, dll).
    - Dapat di-**Expand / Collapse** per kategori.
    - Tersedia tombol **Search & Filter Dropdown**.
    - Tersedia tombol **Mute All**, **Rename**, dan **Delete Category** untuk menghapus seluruh channel dalam satu kelas sekaligus dengan sekali klik!
+   - Tombol **"Lengkapi Webhook Kosong"** untuk memindai dan memperbaiki webhook yang belum terpasang secara instan.
 

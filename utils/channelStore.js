@@ -68,6 +68,8 @@ class ChannelStore {
             botKey:    String(ch.botKey   || '1'),
             threadId:  ch.threadId ? String(ch.threadId) : null,
             dcWebhookUrl: ch.dcWebhookUrl || null,
+            targetChannelId: ch.targetChannelId ? String(ch.targetChannelId) : null,
+            targetGuildId: ch.targetGuildId ? String(ch.targetGuildId) : null,
             dcThreadId: ch.dcThreadId ? String(ch.dcThreadId) : null,
             dcCustomUsername: ch.dcCustomUsername || null,
             dcCustomAvatarUrl: ch.dcCustomAvatarUrl || null,
@@ -131,6 +133,8 @@ class ChannelStore {
         botKey:     ch.botKey,
         tgThreadId: ch.threadId || null,
         dcWebhookUrl: ch.dcWebhookUrl || null,
+        targetChannelId: ch.targetChannelId || null,
+        targetGuildId: ch.targetGuildId || null,
         dcThreadId: ch.dcThreadId || null,
         dcCustomUsername: ch.dcCustomUsername || null,
         dcCustomAvatarUrl: ch.dcCustomAvatarUrl || null,
@@ -227,7 +231,7 @@ class ChannelStore {
 
   /**
    * Tambah atau update channel.
-   * @param {{ name, discordId, tgChatId, botKey, threadId, category }} channel
+   * @param {{ name, discordId, tgChatId, botKey, threadId, category, dcWebhookUrl, targetChannelId, targetGuildId }} channel
    */
   add(channel) {
     const ch = {
@@ -238,6 +242,8 @@ class ChannelStore {
       botKey:    String(channel.botKey  || '1'),
       threadId:  channel.threadId ? String(channel.threadId) : null,
       dcWebhookUrl: channel.dcWebhookUrl || null,
+      targetChannelId: channel.targetChannelId ? String(channel.targetChannelId) : null,
+      targetGuildId: channel.targetGuildId ? String(channel.targetGuildId) : null,
       dcThreadId: channel.dcThreadId ? String(channel.dcThreadId) : null,
       dcCustomUsername: channel.dcCustomUsername || null,
       dcCustomAvatarUrl: channel.dcCustomAvatarUrl || null,

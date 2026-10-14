@@ -430,6 +430,46 @@ function startWebServer(tgManager, channelMap, port = 5080, tg2dcStore = null) {
     }
   });
 
+  app.post('/api/autolink/compare', async (req, res) => {
+    const { sourceGuildId, sourceCategoryId, targetGuildId, targetCategoryId, categoryName } = req.body;
+    if (!sourceGuildId || !sourceCategoryId || !targetGuildId) {
+      return res.status(400).json({ error: 'sourceGuildId, sourceCategoryId, dan targetGuildId wajib diisi' });
+    }
+    try {
+      const diff = await autoLinkManager.compareCategory({
+        sourceGuildId,
+        sourceCategoryId,
+        targetGuildId,
+        targetCategoryId: targetCategoryId || null,
+        categoryName: categoryName || '',
+      });
+      res.json({ success: true, diff });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/autolink/reconcile', async (req, res) => {
+    const { sourceGuildId, sourceCategoryId, targetGuildId, targetCategoryId, categoryName, options, autoSync } = req.body;
+    if (!sourceGuildId || !sourceCategoryId || !targetGuildId) {
+      return res.status(400).json({ error: 'sourceGuildId, sourceCategoryId, dan targetGuildId wajib diisi' });
+    }
+    try {
+      const report = await autoLinkManager.executeReconcile({
+        sourceGuildId,
+        sourceCategoryId,
+        targetGuildId,
+        targetCategoryId: targetCategoryId || null,
+        categoryName: categoryName || '',
+        options: options || { rename: true, add: true, remove: true, repairWebhook: true },
+        autoSync: autoSync !== false,
+      });
+      res.json({ success: true, report });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
   app.post('/api/autolink/repair-webhooks', async (req, res) => {
     const { targetGuildId, categoryName } = req.body;
     if (!targetGuildId) {

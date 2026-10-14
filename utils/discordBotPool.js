@@ -315,6 +315,120 @@ class DiscordBotPool {
   }
 
   /**
+   * Update informasi channel di server tujuan (Rename, ganti topik, atau pindah kategori)
+   * Dilengkapi auto-wait rate limit agar tidak ada yang tersekip
+   * @param {string} channelId 
+   * @param {{ name?: string, topic?: string, parent_id?: string }} updates 
+   * @param {Function} onWaitCallback
+   */
+  async updateChannel(channelId, updates = {}, onWaitCallback = null) {
+    const payload = {};
+    if (updates.name) payload.name = updates.name.trim().toLowerCase().replace(/\s+/g, '-');
+    if (updates.topic !== undefined) payload.topic = updates.topic ? String(updates.topic).substring(0, 1024) : null;
+    if (updates.parent_id !== undefined) payload.parent_id = updates.parent_id || null;
+
+    const maxRounds = 5;
+    for (let round = 0; round < maxRounds; round++) {
+      const totalBots = Math.max(1, this.tokens.length);
+      let hitRateLimit = false;
+      let minRetryAfterMs = 4000;
+      let lastErr = null;
+
+      for (let i = 0; i < totalBots; i++) {
+        const token = this.getNextBotToken();
+        try {
+          return await this._request(token, 'PATCH', `/channels/${channelId}`, payload);
+        } catch (err) {
+          lastErr = err;
+          if (err.response?.status === 404) return null;
+          if (err.response?.status === 429) {
+            hitRateLimit = true;
+            const retrySec = Number(err.response.data?.retry_after || err.response.headers?.['retry-after'] || 3);
+            const waitMs = Math.ceil(retrySec * 1000) + 600;
+            if (waitMs < minRetryAfterMs) minRetryAfterMs = waitMs;
+            logger.warn(`DiscordBotPool: Bot #${i+1} terkena rate-limit update channel (429). Cooldown: ${retrySec}s.`);
+            continue;
+          }
+          if (err.response?.status === 403) {
+            throw new Error(`Bot tidak memiliki izin "Manage Channels" di server tujuan (403 Forbidden).`);
+          }
+        }
+      }
+
+      if (hitRateLimit) {
+        const waitSec = Math.ceil(minRetryAfterMs / 1000);
+        logger.warn(`DiscordBotPool: Menunggu cooldown update channel selama ${waitSec} detik (Round ${round + 1}/${maxRounds})...`);
+        if (typeof onWaitCallback === 'function') onWaitCallback(waitSec, round + 1, maxRounds);
+        await new Promise(r => setTimeout(r, minRetryAfterMs));
+        continue;
+      }
+      if (lastErr) throw lastErr;
+    }
+    throw new Error(`Gagal update channel ${channelId} setelah ${maxRounds} putaran karena batas rate-limit.`);
+  }
+
+  /**
+   * Hapus channel di server tujuan via Bot
+   * Dilengkapi auto-wait rate limit
+   * @param {string} channelId 
+   * @param {Function} onWaitCallback
+   */
+  async deleteChannel(channelId, onWaitCallback = null) {
+    const maxRounds = 5;
+    for (let round = 0; round < maxRounds; round++) {
+      const totalBots = Math.max(1, this.tokens.length);
+      let hitRateLimit = false;
+      let minRetryAfterMs = 4000;
+      let lastErr = null;
+
+      for (let i = 0; i < totalBots; i++) {
+        const token = this.getNextBotToken();
+        try {
+          return await this._request(token, 'DELETE', `/channels/${channelId}`);
+        } catch (err) {
+          lastErr = err;
+          if (err.response?.status === 404) return true; // Sudah terhapus
+          if (err.response?.status === 429) {
+            hitRateLimit = true;
+            const retrySec = Number(err.response.data?.retry_after || err.response.headers?.['retry-after'] || 3);
+            const waitMs = Math.ceil(retrySec * 1000) + 600;
+            if (waitMs < minRetryAfterMs) minRetryAfterMs = waitMs;
+            logger.warn(`DiscordBotPool: Bot #${i+1} terkena rate-limit delete channel (429). Cooldown: ${retrySec}s.`);
+            continue;
+          }
+          if (err.response?.status === 403) {
+            throw new Error(`Bot tidak memiliki izin "Manage Channels" di server tujuan (403 Forbidden).`);
+          }
+        }
+      }
+
+      if (hitRateLimit) {
+        const waitSec = Math.ceil(minRetryAfterMs / 1000);
+        logger.warn(`DiscordBotPool: Menunggu cooldown delete channel selama ${waitSec} detik (Round ${round + 1}/${maxRounds})...`);
+        if (typeof onWaitCallback === 'function') onWaitCallback(waitSec, round + 1, maxRounds);
+        await new Promise(r => setTimeout(r, minRetryAfterMs));
+        continue;
+      }
+      if (lastErr) throw lastErr;
+    }
+    throw new Error(`Gagal hapus channel ${channelId} setelah ${maxRounds} putaran karena batas rate-limit.`);
+  }
+
+  /**
+   * Dapatkan detail webhook (channel_id, guild_id, name) langsung dari webhook URL tanpa perlu bot token
+   * @param {string} webhookUrl 
+   */
+  async getWebhookDetails(webhookUrl) {
+    if (!webhookUrl || typeof webhookUrl !== 'string') return null;
+    try {
+      const res = await axios.get(webhookUrl.trim(), { timeout: 8000 });
+      return res.data;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /**
    * Ambil daftar webhook yang sudah ada di suatu channel
    * @param {string} channelId 
    */

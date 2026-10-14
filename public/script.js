@@ -988,69 +988,178 @@ async function updateAutoLinkBotStatus() {
     }
 }
 
-// Preview Source Channels
+// Preview & Compare Channels
 const btnAutolinkPreview = document.getElementById('btn-autolink-preview');
 if (btnAutolinkPreview) {
     btnAutolinkPreview.addEventListener('click', async () => {
         const srcGuild = document.getElementById('autolink-source-guild').value.trim();
         const srcCat = document.getElementById('autolink-source-category').value.trim();
+        const tgtGuild = document.getElementById('autolink-target-guild')?.value.trim();
+        const tgtCat = document.getElementById('autolink-target-category')?.value.trim() || null;
+        const catName = document.getElementById('autolink-category-name')?.value.trim() || '';
+
         if (!srcGuild || !srcCat) {
             showToast('Isi ID Server Sumber & ID Kategori Sumber terlebih dahulu', 'warning');
             return;
         }
 
         btnAutolinkPreview.disabled = true;
-        btnAutolinkPreview.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Membaca...`;
+        btnAutolinkPreview.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Membaca & Membandingkan...`;
+        
         try {
-            const r = await fetch(`${API}/autolink/preview`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sourceGuildId: srcGuild, sourceCategoryId: srcCat })
-            });
-            const d = await r.json();
-            if (d.success) {
-                const prev = d.preview;
-                document.getElementById('autolink-preview-container').style.display = 'block';
-                document.getElementById('autolink-preview-title').textContent = `Kategori: "${prev.sourceCategoryName}" (${prev.sourceGuildName})`;
-                document.getElementById('autolink-preview-badge').textContent = `${prev.channelCount} Text Channels`;
-                
-                // Auto-fill nama kategori jika masih kosong
-                const catNameInput = document.getElementById('autolink-category-name');
-                if (!catNameInput.value.trim()) {
-                    catNameInput.value = prev.sourceCategoryName;
-                }
+            // Jika Target Guild sudah diisi, gunakan endpoint compare untuk analisis perbandingan mendalam
+            if (tgtGuild) {
+                const r = await fetch(`${API}/autolink/compare`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sourceGuildId: srcGuild,
+                        sourceCategoryId: srcCat,
+                        targetGuildId: tgtGuild,
+                        targetCategoryId: tgtCat,
+                        categoryName: catName
+                    })
+                });
+                const d = await r.json();
+                if (d.success) {
+                    const diff = d.diff;
+                    document.getElementById('autolink-preview-container').style.display = 'block';
+                    document.getElementById('autolink-preview-title').textContent = `Perbandingan: "${diff.sourceCategoryName}" (${diff.sourceGuildName})`;
+                    
+                    const catNameInput = document.getElementById('autolink-category-name');
+                    if (!catNameInput.value.trim()) {
+                        catNameInput.value = diff.sourceCategoryName;
+                    }
 
-                const listEl = document.getElementById('autolink-preview-list');
-                listEl.innerHTML = prev.channels.map(c => `
-                    <div style="display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid rgba(255,255,255,0.04);">
-                        <span>#${c.name} <span style="opacity:0.6;font-size:0.75rem;">(${c.id})</span></span>
-                        <span>${c.alreadyMapped ? '<span style="color:#fbbf24;">⚠️ Sudah Dimapping</span>' : '<span style="color:#34d399;">✅ Siap Di-link</span>'}</span>
-                    </div>
-                `).join('');
-                showToast(`Ditemukan ${prev.channelCount} channel di kategori sumber!`, 'success');
+                    // Render Badges
+                    const badgesEl = document.getElementById('autolink-preview-badges');
+                    badgesEl.innerHTML = `
+                        <span class="tag" style="background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3); font-weight:600;"><i class='bx bx-check'></i> ${diff.counts.identicalCount} Cocok</span>
+                        ${diff.counts.toRenameCount > 0 ? `<span class="tag" style="background:rgba(99,102,241,0.15); color:#818cf8; border:1px solid rgba(99,102,241,0.3); font-weight:600;"><i class='bx bx-edit'></i> ${diff.counts.toRenameCount} Beda Nama</span>` : ''}
+                        ${diff.counts.toAddCount > 0 ? `<span class="tag" style="background:rgba(14,165,233,0.15); color:#38bdf8; border:1px solid rgba(14,165,233,0.3); font-weight:600;"><i class='bx bx-plus'></i> ${diff.counts.toAddCount} Kurang</span>` : ''}
+                        ${diff.counts.toRemoveCount > 0 ? `<span class="tag" style="background:rgba(239,68,68,0.15); color:#f87171; border:1px solid rgba(239,68,68,0.3); font-weight:600;"><i class='bx bx-trash'></i> ${diff.counts.toRemoveCount} Terhapus</span>` : ''}
+                    `;
+
+                    // Render List
+                    const listEl = document.getElementById('autolink-preview-list');
+                    let listHtml = '';
+
+                    // 1. Yang perlu diubah namanya
+                    if (diff.toRename.length > 0) {
+                        listHtml += `<div style="font-weight:700; color:#818cf8; margin-top:4px; margin-bottom:2px;">✏️ Perlu Disamakan Namanya (${diff.toRename.length}):</div>`;
+                        listHtml += diff.toRename.map(c => `
+                            <div style="display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid rgba(255,255,255,0.04);">
+                                <span>#${escapeHtml(c.targetOldName)} ➔ <b style="color:#a5b4fc;">#${escapeHtml(c.targetNewName)}</b></span>
+                                <span style="color:#818cf8; font-size:0.75rem;">Akan Di-rename</span>
+                            </div>
+                        `).join('');
+                    }
+
+                    // 2. Yang kurang (akan dibuat)
+                    if (diff.toAdd.length > 0) {
+                        listHtml += `<div style="font-weight:700; color:#38bdf8; margin-top:8px; margin-bottom:2px;">➕ Channel Kurang di Tujuan (${diff.toAdd.length}):</div>`;
+                        listHtml += diff.toAdd.map(c => `
+                            <div style="display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid rgba(255,255,255,0.04);">
+                                <span>#${escapeHtml(c.name)}</span>
+                                <span style="color:#38bdf8; font-size:0.75rem;">Akan Dibuat + Webhook</span>
+                            </div>
+                        `).join('');
+                    }
+
+                    // 3. Yang sudah terhapus di sumber
+                    if (diff.toRemove.length > 0) {
+                        listHtml += `<div style="font-weight:700; color:#f87171; margin-top:8px; margin-bottom:2px;">🗑️ Channel Terhapus di Sumber (${diff.toRemove.length}):</div>`;
+                        listHtml += diff.toRemove.map(c => `
+                            <div style="display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid rgba(255,255,255,0.04);">
+                                <span>#${escapeHtml(c.name)}</span>
+                                <span style="color:#f87171; font-size:0.75rem;">Akan Dihapus & Dibersihkan</span>
+                            </div>
+                        `).join('');
+                    }
+
+                    // 4. Yang sudah cocok
+                    if (diff.identical.length > 0) {
+                        listHtml += `<div style="font-weight:700; color:#10b981; margin-top:8px; margin-bottom:2px;">✅ Sudah Cocok & Terhubung (${diff.identical.length}):</div>`;
+                        listHtml += diff.identical.slice(0, 8).map(c => `
+                            <div style="display:flex; justify-content:space-between; padding:2px 0; opacity:0.85;">
+                                <span>#${escapeHtml(c.name)}</span>
+                                <span style="color:#10b981; font-size:0.75rem;">100% Identik</span>
+                            </div>
+                        `).join('');
+                        if (diff.identical.length > 8) {
+                            listHtml += `<div style="opacity:0.6; font-size:0.75rem; padding:2px 0;">... dan ${diff.identical.length - 8} channel identik lainnya</div>`;
+                        }
+                    }
+
+                    listEl.innerHTML = listHtml;
+                    showToast(`Analisis selesai: ${diff.counts.identicalCount} cocok, ${diff.counts.toRenameCount} beda nama, ${diff.counts.toAddCount} kurang, ${diff.counts.toRemoveCount} terhapus.`, 'info');
+                } else {
+                    showToast(d.error || 'Gagal menganalisis perbandingan', 'error');
+                }
             } else {
-                showToast(d.error || 'Gagal membaca kategori sumber', 'error');
+                // Fallback jika belum mengisi target guild
+                const r = await fetch(`${API}/autolink/preview`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sourceGuildId: srcGuild, sourceCategoryId: srcCat })
+                });
+                const d = await r.json();
+                if (d.success) {
+                    const prev = d.preview;
+                    document.getElementById('autolink-preview-container').style.display = 'block';
+                    document.getElementById('autolink-preview-title').textContent = `Kategori Sumber: "${prev.sourceCategoryName}" (${prev.sourceGuildName})`;
+                    
+                    const badgesEl = document.getElementById('autolink-preview-badges');
+                    badgesEl.innerHTML = `<span class="tag" style="background:rgba(99,102,241,0.2); color:#818cf8;">${prev.channelCount} Channels</span>`;
+
+                    const catNameInput = document.getElementById('autolink-category-name');
+                    if (!catNameInput.value.trim()) {
+                        catNameInput.value = prev.sourceCategoryName;
+                    }
+
+                    const listEl = document.getElementById('autolink-preview-list');
+                    listEl.innerHTML = prev.channels.map(c => `
+                        <div style="display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid rgba(255,255,255,0.04);">
+                            <span>#${escapeHtml(c.name)} <span style="opacity:0.6;font-size:0.75rem;">(${c.id})</span></span>
+                            <span>${c.alreadyMapped ? '<span style="color:#fbbf24;">⚠️ Sudah Dimapping</span>' : '<span style="color:#34d399;">✅ Siap Di-link</span>'}</span>
+                        </div>
+                    `).join('');
+                    showToast(`Ditemukan ${prev.channelCount} channel di kategori sumber! Masukkan Server Tujuan untuk analisis perbandingan otomatis.`, 'success');
+                } else {
+                    showToast(d.error || 'Gagal membaca kategori sumber', 'error');
+                }
             }
         } catch (err) {
             showToast('Connection error: ' + err.message, 'error');
         } finally {
             btnAutolinkPreview.disabled = false;
-            btnAutolinkPreview.innerHTML = `<i class='bx bx-search'></i> Preview Channel`;
+            btnAutolinkPreview.innerHTML = `<i class='bx bx-git-compare'></i> Bandingkan & Periksa Channel`;
         }
     });
 }
 
-// Execute AutoLink
+// Execute AutoLink / Smart Reconciliation
 const formAutolink = document.getElementById('form-autolink');
 if (formAutolink) {
     formAutolink.addEventListener('submit', async e => {
         e.preventDefault();
+        
+        const optRename = document.getElementById('autolink-opt-rename')?.checked !== false;
+        const optAdd = document.getElementById('autolink-opt-add')?.checked !== false;
+        const optRemove = document.getElementById('autolink-opt-remove')?.checked !== false;
+
         const payload = {
             sourceGuildId: document.getElementById('autolink-source-guild').value.trim(),
             sourceCategoryId: document.getElementById('autolink-source-category').value.trim(),
             targetGuildId: document.getElementById('autolink-target-guild').value.trim(),
             targetCategoryId: document.getElementById('autolink-target-category').value.trim() || null,
             categoryName: document.getElementById('autolink-category-name').value.trim(),
+            options: {
+                rename: optRename,
+                add: optAdd,
+                remove: optRemove,
+                repairWebhook: true
+            },
             autoSync: document.getElementById('autolink-autosync').checked
         };
 
@@ -1064,14 +1173,13 @@ if (formAutolink) {
         progressContainer.style.display = 'block';
         progressBar.style.width = '15%';
         progressPct.textContent = '15%';
-        progressLabel.textContent = 'Memulai proses pembuatan channel & webhook...';
-        logEl.innerHTML = `<div class="log-line">🚀 Memulai Auto-Link & Provisioning ke server tujuan...</div>`;
+        progressLabel.textContent = 'Membaca data dan menyelaraskan channel...';
+        logEl.innerHTML = `<div class="log-line">🚀 Memulai Sinkronisasi Cerdas & Provisioning (Zero-Skip)...</div>`;
 
         btnStart.disabled = true;
-        btnStart.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Sedang Memproses...`;
+        btnStart.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Sedang Menyelaraskan...`;
 
         try {
-            // Simulasi progress halus sembari menunggu backend selesai
             let fakePct = 15;
             const progressTimer = setInterval(() => {
                 if (fakePct < 85) {
@@ -1079,9 +1187,9 @@ if (formAutolink) {
                     progressBar.style.width = `${fakePct}%`;
                     progressPct.textContent = `${fakePct}%`;
                 }
-            }, 500);
+            }, 600);
 
-            const r = await fetch(`${API}/autolink/execute`, {
+            const r = await fetch(`${API}/autolink/reconcile`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -1092,41 +1200,32 @@ if (formAutolink) {
             if (d.success) {
                 progressBar.style.width = '100%';
                 progressPct.textContent = '100%';
-                progressLabel.textContent = 'Selesai!';
+                progressLabel.textContent = 'Sinkronisasi Selesai!';
 
-                const res = d.result;
-                const errCount = (res.errors || []).length;
-                const successCount = (res.created || []).length + (res.updated || []).length;
+                const rep = d.report;
+                const errCount = (rep.errors || []).length;
+                const totalActions = (rep.renamed || []).length + (rep.added || []).length + (rep.removed || []).length + (rep.repaired || []).length;
 
                 logEl.innerHTML += `
-                    <div class="log-line log-success" style="font-weight:700; margin-top:6px;">📊 LAPORAN AUTO-LINK:</div>
-                    <div class="log-line log-success">✅ ${res.created.length} channel baru dibuat & webhook terpasang.</div>
-                    ${res.updated.length ? `<div class="log-line log-warn">ℹ️ ${res.updated.length} channel diperbarui mappingnya.</div>` : ''}
+                    <div class="log-line log-success" style="font-weight:700; margin-top:6px;">📊 LAPORAN SINKRONISASI LENGKAP:</div>
+                    ${rep.renamed.length ? `<div class="log-line log-success">✏️ ${rep.renamed.length} channel disamakan namanya agar identik mirip: ${rep.renamed.map(r => '#' + escapeHtml(r.newName)).join(', ')}</div>` : ''}
+                    ${rep.added.length ? `<div class="log-line log-success">➕ ${rep.added.length} channel kurang berhasil dibuat & webhook terpasang: ${rep.added.map(a => '#' + escapeHtml(a.name)).join(', ')}</div>` : ''}
+                    ${rep.removed.length ? `<div class="log-line log-warn">🗑️ ${rep.removed.length} channel yang terhapus di sumber berhasil dikurangi/dibersihkan: ${rep.removed.map(r => '#' + escapeHtml(r.name)).join(', ')}</div>` : ''}
+                    ${rep.repaired.length ? `<div class="log-line log-success">🛠️ ${rep.repaired.length} webhook berhasil dilengkapi.</div>` : ''}
+                    
+                    ${totalActions === 0 ? `<div class="log-line log-success">✨ Kategori sudah 100% identik dan selaras sempurna! Tidak ada perbedaan yang perlu diubah.</div>` : ''}
+                    
                     ${errCount > 0 ? `
-                        <div class="log-line log-err" style="margin-top:4px;">⚠️ Ada ${errCount} channel yang webhook-nya tertunda/kendala:</div>
-                        ${res.errors.map(e => `<div class="log-line log-err" style="padding-left:12px;">• #${escapeHtml(e.name)}: ${escapeHtml(e.error || 'Webhook belum dibuat')}</div>`).join('')}
-                        <div style="margin-top:8px;">
-                            <button type="button" id="btn-quick-fix-failed-webhooks" class="btn-primary btn-sm" style="background:#f59e0b; border:none; padding:6px 14px; font-size:0.8rem; border-radius:6px; cursor:pointer;">
-                                <i class='bx bx-wrench'></i> Lengkapi Webhook yang Gagal Sekarang
-                            </button>
-                        </div>
-                    ` : '<div class="log-line log-success">🎉 Seluruh channel berhasil dibuatkan webhook 100% tanpa ada yang terlewat!</div>'}
-                    <div class="log-line log-success">📁 Disimpan ke kategori "${escapeHtml(res.categoryName)}"!</div>
+                        <div class="log-line log-err" style="margin-top:4px;">⚠️ Ada ${errCount} channel dengan kendala:</div>
+                        ${rep.errors.map(e => `<div class="log-line log-err" style="padding-left:12px;">• #${escapeHtml(e.name)} [${e.action}]: ${escapeHtml(e.error)}</div>`).join('')}
+                    ` : '<div class="log-line log-success">🎉 Seluruh channel diproses 100% tanpa ada yang tersekip sedikitpun!</div>'}
+                    <div class="log-line log-success">📁 Mapping kategori "${escapeHtml(rep.categoryName)}" tersimpan rapi!</div>
                 `;
 
                 if (errCount > 0) {
-                    showToast(`Auto-Link: ${successCount} sukses, ${errCount} channel perlu perbaikan webhook`, 'warning');
-                    const quickFixBtn = document.getElementById('btn-quick-fix-failed-webhooks');
-                    if (quickFixBtn) {
-                        quickFixBtn.addEventListener('click', () => {
-                            btnAutolinkRepair?.click();
-                        });
-                    }
+                    showToast(`Sinkronisasi: ${totalActions} sukses, ${errCount} channel perlu perbaikan`, 'warning');
                 } else {
-                    showToast(`Auto-Link Selesai! Semua ${successCount} channel terhubung 100%!`, 'success');
-                    setTimeout(() => {
-                        closeModal('modal-autolink');
-                    }, 2500);
+                    showToast(`Sinkronisasi Selesai! Semua channel berhasil diselaraskan 100%!`, 'success');
                 }
                 loadChannels();
             } else {
@@ -1134,14 +1233,14 @@ if (formAutolink) {
                 progressPct.textContent = '0%';
                 progressLabel.textContent = 'Gagal!';
                 logEl.innerHTML += `<div class="log-line log-err">❌ Error: ${d.error || 'Gagal mengeksekusi'}</div>`;
-                showToast(d.error || 'Gagal mengeksekusi auto-link', 'error');
+                showToast(d.error || 'Gagal mengeksekusi sinkronisasi', 'error');
             }
         } catch (err) {
             logEl.innerHTML += `<div class="log-line log-err">❌ Connection error: ${err.message}</div>`;
             showToast('Connection error: ' + err.message, 'error');
         } finally {
             btnStart.disabled = false;
-            btnStart.innerHTML = `<i class='bx bx-rocket'></i> Mulai Auto-Link & Provisioning`;
+            btnStart.innerHTML = `<i class='bx bx-rocket'></i> Mulai Sinkronisasi & Auto-Link`;
         }
     });
 }
