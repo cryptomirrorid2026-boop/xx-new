@@ -256,59 +256,180 @@ class DiscordBotPool {
   }
 
   /**
-   * Buat Channel Teks di server tujuan di bawah kategori
+   * Buat Channel Teks di server tujuan di bawah kategori dengan auto-wait rate limit
    * @param {string} guildId 
    * @param {string} parentCategoryId 
    * @param {string} channelName 
    * @param {string} topic 
+   * @param {Function} onWaitCallback
    */
-  async createChannel(guildId, parentCategoryId, channelName, topic = '') {
-    const token = this.getNextBotToken();
+  async createChannel(guildId, parentCategoryId, channelName, topic = '', onWaitCallback = null) {
     const payload = {
       name: channelName,
       type: 0, // GUILD_TEXT
       parent_id: parentCategoryId || null,
     };
     if (topic) payload.topic = topic.substring(0, 1024);
-    return await this._request(token, 'POST', `/guilds/${guildId}/channels`, payload);
+
+    const maxRounds = 5;
+    for (let round = 0; round < maxRounds; round++) {
+      const totalBots = Math.max(1, this.tokens.length);
+      let hitRateLimit = false;
+      let minRetryAfterMs = 4000;
+      let lastErr = null;
+
+      for (let i = 0; i < totalBots; i++) {
+        const token = this.getNextBotToken();
+        try {
+          return await this._request(token, 'POST', `/guilds/${guildId}/channels`, payload);
+        } catch (err) {
+          lastErr = err;
+          if (err.response?.status === 429) {
+            hitRateLimit = true;
+            const retrySec = Number(err.response.data?.retry_after || err.response.headers?.['retry-after'] || 3);
+            const waitMs = Math.ceil(retrySec * 1000) + 600;
+            if (waitMs < minRetryAfterMs) minRetryAfterMs = waitMs;
+            logger.warn(`DiscordBotPool: Bot #${i+1} terkena rate-limit channel (429). Cooldown: ${retrySec}s.`);
+            continue;
+          }
+          if (err.response?.status === 403) {
+            throw new Error(`Bot tidak memiliki izin "Manage Channels" di server tujuan (403 Forbidden). Pastikan Bot diberi hak Administrator.`);
+          }
+        }
+      }
+
+      if (hitRateLimit) {
+        const waitSec = Math.ceil(minRetryAfterMs / 1000);
+        logger.warn(`DiscordBotPool: Menunggu cooldown pembuatan channel selama ${waitSec} detik (Round ${round + 1}/${maxRounds})...`);
+        if (typeof onWaitCallback === 'function') {
+          onWaitCallback(waitSec, round + 1, maxRounds);
+        }
+        await new Promise(r => setTimeout(r, minRetryAfterMs));
+        continue;
+      }
+
+      if (lastErr) throw lastErr;
+    }
+
+    throw new Error(`Gagal membuat channel #${channelName} karena batas rate-limit.`);
   }
 
   /**
-   * Buat Webhook di channel tujuan dengan rotasi bot
+   * Ambil daftar webhook yang sudah ada di suatu channel
+   * @param {string} channelId 
+   */
+  async getChannelWebhooks(channelId) {
+    if (this.tokens.length === 0) return [];
+    const token = this.getNextBotToken();
+    try {
+      const data = await this._request(token, 'GET', `/channels/${channelId}/webhooks`);
+      return Array.isArray(data) ? data : [];
+    } catch (err) {
+      logger.warn(`DiscordBotPool: Gagal ambil webhook di channel ${channelId}: ${err.message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Buat Webhook di channel tujuan dengan rotasi bot dan auto-wait rate limit
    * @param {string} channelId 
    * @param {string} webhookName 
+   * @param {Function} onWaitCallback (callback saat menunggu cooldown rate limit)
    */
-  async createWebhook(channelId, webhookName = 'Nexus Mirror') {
-    // Coba rotasi jika ada beberapa bot
-    let lastErr = null;
-    const startIdx = this._rrIdx;
-    const totalBots = Math.max(1, this.tokens.length);
-
-    for (let i = 0; i < totalBots; i++) {
-      const token = this.getNextBotToken();
-      try {
-        const data = await this._request(token, 'POST', `/channels/${channelId}/webhooks`, {
-          name: webhookName,
-        });
-        return {
-          id: data.id,
-          token: data.token,
-          url: data.url || `https://discord.com/api/webhooks/${data.id}/${data.token}`,
-          channelId: data.channel_id,
-          guildId: data.guild_id,
-        };
-      } catch (err) {
-        lastErr = err;
-        // Jika 429 rate limit, coba bot berikutnya di pool
-        if (err.response?.status === 429) {
-          logger.warn(`DiscordBotPool: Bot terkena rate-limit pembuatan webhook. Berpindah ke bot berikutnya di pool...`);
-          continue;
+  async createWebhook(channelId, webhookName = 'Nexus Mirror', onWaitCallback = null) {
+    // 1. Cek apakah di channel ini sudah ada webhook yang bisa dipakai (hindari duplikat & hemat kuota)
+    try {
+      const existingWebhooks = await this.getChannelWebhooks(channelId);
+      if (Array.isArray(existingWebhooks) && existingWebhooks.length > 0) {
+        const match = existingWebhooks.find(w => w.token && w.name && w.name.toLowerCase().includes('nexus')) 
+                   || existingWebhooks.find(w => w.token);
+        if (match && match.token) {
+          logger.info(`DiscordBotPool: Menggunakan webhook yang sudah ada di channel ${channelId}: "${match.name}"`);
+          return {
+            id: match.id,
+            token: match.token,
+            url: match.url || `https://discord.com/api/webhooks/${match.id}/${match.token}`,
+            channelId: match.channel_id,
+            guildId: match.guild_id,
+            reused: true,
+          };
         }
-        // Jika permission error atau error lain
-        break;
       }
+    } catch (_) {}
+
+    // 2. Buat webhook baru dengan sistem rotasi dan retry cerdas (JANGAN DI-SKIP)
+    const maxGlobalRounds = 8;
+    for (let round = 0; round < maxGlobalRounds; round++) {
+      const totalBots = Math.max(1, this.tokens.length);
+      let hitRateLimit = false;
+      let minRetryAfterMs = 4000;
+      let lastErr = null;
+
+      for (let i = 0; i < totalBots; i++) {
+        const token = this.getNextBotToken();
+        try {
+          const data = await this._request(token, 'POST', `/channels/${channelId}/webhooks`, {
+            name: webhookName,
+          });
+          return {
+            id: data.id,
+            token: data.token,
+            url: data.url || `https://discord.com/api/webhooks/${data.id}/${data.token}`,
+            channelId: data.channel_id,
+            guildId: data.guild_id,
+          };
+        } catch (err) {
+          lastErr = err;
+          // Rate limit 429
+          if (err.response?.status === 429) {
+            hitRateLimit = true;
+            const retrySec = Number(err.response.data?.retry_after || err.response.headers?.['retry-after'] || 3);
+            const waitMs = Math.ceil(retrySec * 1000) + 600;
+            if (waitMs < minRetryAfterMs) minRetryAfterMs = waitMs;
+            logger.warn(`DiscordBotPool: Bot #${i+1} terkena rate-limit webhook (429). Cooldown: ${retrySec}s.`);
+            continue;
+          }
+
+          // Error 30007: Maximum number of webhooks reached (10)
+          const errCode = err.response?.data?.code;
+          if (err.response?.status === 400 && (errCode === 30007 || String(err.response.data?.message).includes('webhooks'))) {
+            logger.warn(`DiscordBotPool: Channel ${channelId} mencapai batas 10 webhook. Mengambil webhook yang tersedia...`);
+            const list = await this.getChannelWebhooks(channelId);
+            if (list && list.length > 0 && list[0].token) {
+              const w = list[0];
+              return {
+                id: w.id,
+                token: w.token,
+                url: w.url || `https://discord.com/api/webhooks/${w.id}/${w.token}`,
+                channelId: w.channel_id,
+                guildId: w.guild_id,
+                reused: true,
+              };
+            }
+          }
+
+          // Permission error 403
+          if (err.response?.status === 403) {
+            throw new Error(`Bot tidak memiliki izin "Manage Webhooks" di server/channel tujuan (403 Forbidden). Pastikan Bot diberi hak Administrator.`);
+          }
+        }
+      }
+
+      // Jika seluruh bot terkena rate limit, TUNGGU sampai rate limit terbuka lalu coba lagi (JANGAN DI-SKIP)
+      if (hitRateLimit) {
+        const waitSec = Math.ceil(minRetryAfterMs / 1000);
+        logger.warn(`DiscordBotPool: Seluruh bot sedang cooldown rate limit. Menunggu ${waitSec} detik sebelum mencoba kembali (Round ${round + 1}/${maxGlobalRounds})...`);
+        if (typeof onWaitCallback === 'function') {
+          onWaitCallback(waitSec, round + 1, maxGlobalRounds);
+        }
+        await new Promise(r => setTimeout(r, minRetryAfterMs));
+        continue;
+      }
+
+      if (lastErr) throw lastErr;
     }
-    throw lastErr || new Error('Gagal membuat webhook');
+
+    throw new Error(`Gagal membuat webhook setelah ${maxGlobalRounds} putaran karena batas rate-limit Discord.`);
   }
 
   get size() {

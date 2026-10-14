@@ -1095,19 +1095,40 @@ if (formAutolink) {
                 progressLabel.textContent = 'Selesai!';
 
                 const res = d.result;
+                const errCount = (res.errors || []).length;
+                const successCount = (res.created || []).length + (res.updated || []).length;
+
                 logEl.innerHTML += `
-                    <div class="log-line log-success">✅ Berhasil membuat Kategori / Channel tujuan!</div>
+                    <div class="log-line log-success" style="font-weight:700; margin-top:6px;">📊 LAPORAN AUTO-LINK:</div>
                     <div class="log-line log-success">✅ ${res.created.length} channel baru dibuat & webhook terpasang.</div>
                     ${res.updated.length ? `<div class="log-line log-warn">ℹ️ ${res.updated.length} channel diperbarui mappingnya.</div>` : ''}
-                    ${res.errors.length ? `<div class="log-line log-err">❌ ${res.errors.length} channel mengalami kendala: ${res.errors.map(e => e.name).join(', ')}</div>` : ''}
-                    <div class="log-line log-success">✨ Seluruh mapping disimpan ke kategori "${res.categoryName}"!</div>
+                    ${errCount > 0 ? `
+                        <div class="log-line log-err" style="margin-top:4px;">⚠️ Ada ${errCount} channel yang webhook-nya tertunda/kendala:</div>
+                        ${res.errors.map(e => `<div class="log-line log-err" style="padding-left:12px;">• #${escapeHtml(e.name)}: ${escapeHtml(e.error || 'Webhook belum dibuat')}</div>`).join('')}
+                        <div style="margin-top:8px;">
+                            <button type="button" id="btn-quick-fix-failed-webhooks" class="btn-primary btn-sm" style="background:#f59e0b; border:none; padding:6px 14px; font-size:0.8rem; border-radius:6px; cursor:pointer;">
+                                <i class='bx bx-wrench'></i> Lengkapi Webhook yang Gagal Sekarang
+                            </button>
+                        </div>
+                    ` : '<div class="log-line log-success">🎉 Seluruh channel berhasil dibuatkan webhook 100% tanpa ada yang terlewat!</div>'}
+                    <div class="log-line log-success">📁 Disimpan ke kategori "${escapeHtml(res.categoryName)}"!</div>
                 `;
 
-                showToast(`Auto-Link Selesai! ${res.created.length + res.updated.length} channel tersambung.`, 'success');
-                setTimeout(() => {
-                    closeModal('modal-autolink');
-                    loadChannels();
-                }, 2000);
+                if (errCount > 0) {
+                    showToast(`Auto-Link: ${successCount} sukses, ${errCount} channel perlu perbaikan webhook`, 'warning');
+                    const quickFixBtn = document.getElementById('btn-quick-fix-failed-webhooks');
+                    if (quickFixBtn) {
+                        quickFixBtn.addEventListener('click', () => {
+                            btnAutolinkRepair?.click();
+                        });
+                    }
+                } else {
+                    showToast(`Auto-Link Selesai! Semua ${successCount} channel terhubung 100%!`, 'success');
+                    setTimeout(() => {
+                        closeModal('modal-autolink');
+                    }, 2500);
+                }
+                loadChannels();
             } else {
                 progressBar.style.width = '0%';
                 progressPct.textContent = '0%';
@@ -1121,6 +1142,63 @@ if (formAutolink) {
         } finally {
             btnStart.disabled = false;
             btnStart.innerHTML = `<i class='bx bx-rocket'></i> Mulai Auto-Link & Provisioning`;
+        }
+    });
+}
+
+// ─── Repair Missing Webhooks Handler ───────────────────────────
+const btnAutolinkRepair = document.getElementById('btn-autolink-repair');
+if (btnAutolinkRepair) {
+    btnAutolinkRepair.addEventListener('click', async () => {
+        const targetGuildId = document.getElementById('autolink-target-guild')?.value?.trim();
+        const categoryName = document.getElementById('autolink-category-name')?.value?.trim() || null;
+
+        if (!targetGuildId) {
+            showToast('Isi ID Server Tujuan terlebih dahulu untuk memeriksa webhook', 'warning');
+            return;
+        }
+
+        const logEl = document.getElementById('autolink-log');
+        const progressContainer = document.getElementById('autolink-progress-container');
+        if (progressContainer) progressContainer.style.display = 'block';
+
+        btnAutolinkRepair.disabled = true;
+        btnAutolinkRepair.innerHTML = `<i class='bx bx-loader-alt bx-spin'></i> Memeriksa...`;
+
+        if (logEl) {
+            logEl.innerHTML += `<div class="log-line log-warn">🛠️ Memulai pemindaian channel tanpa webhook di server ${targetGuildId}...</div>`;
+        }
+
+        try {
+            const r = await fetch(`${API}/autolink/repair-webhooks`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ targetGuildId, categoryName })
+            });
+            const d = await r.json();
+            if (d.success) {
+                const rep = d.report;
+                if (logEl) {
+                    if (rep.fixed && rep.fixed.length > 0) {
+                        logEl.innerHTML += `<div class="log-line log-success">✅ Berhasil melengkapi webhook untuk ${rep.fixed.length} channel: ${rep.fixed.map(f => '#' + f.name).join(', ')}</div>`;
+                    }
+                    if (rep.errors && rep.errors.length > 0) {
+                        logEl.innerHTML += `<div class="log-line log-err">❌ ${rep.errors.length} channel kendala: ${rep.errors.map(e => '#' + e.name + ' (' + e.error + ')').join(', ')}</div>`;
+                    }
+                    if ((!rep.fixed || rep.fixed.length === 0) && (!rep.errors || rep.errors.length === 0)) {
+                        logEl.innerHTML += `<div class="log-line log-success">✨ Seluruh channel sudah memiliki webhook yang valid!</div>`;
+                    }
+                }
+                showToast(`Pemeriksaan selesai: ${rep.fixed ? rep.fixed.length : 0} webhook berhasil dilengkapi!`, 'success');
+                loadChannels();
+            } else {
+                showToast(d.error || 'Gagal melengkapi webhook', 'error');
+            }
+        } catch (err) {
+            showToast('Connection error: ' + err.message, 'error');
+        } finally {
+            btnAutolinkRepair.disabled = false;
+            btnAutolinkRepair.innerHTML = `<i class='bx bx-wrench'></i> Lengkapi Webhook Kosong`;
         }
     });
 }

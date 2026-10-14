@@ -430,6 +430,22 @@ function startWebServer(tgManager, channelMap, port = 5080, tg2dcStore = null) {
     }
   });
 
+  app.post('/api/autolink/repair-webhooks', async (req, res) => {
+    const { targetGuildId, categoryName } = req.body;
+    if (!targetGuildId) {
+      return res.status(400).json({ error: 'targetGuildId wajib diisi' });
+    }
+    try {
+      const report = await autoLinkManager.repairMissingWebhooks({
+        targetGuildId,
+        categoryName: categoryName || null,
+      });
+      res.json({ success: true, report });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
   app.get('/api/autolink/rules', (_, res) => {
     res.json(autoLinkManager.listRules());
   });

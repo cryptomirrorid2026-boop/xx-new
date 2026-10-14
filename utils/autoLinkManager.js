@@ -243,7 +243,7 @@ class AutoLinkManager {
       }
     }
 
-    // 3. Proses setiap channel
+    // 3. Proses setiap channel (dengan anti-skip dan antrean retry)
     const results = {
       categoryName: finalCategoryName,
       targetCategoryId: targetCatId,
@@ -253,67 +253,93 @@ class AutoLinkManager {
       errors: [],
     };
 
+    const processChannel = async (srcChan, index, total) => {
+      // 1. Cek apakah channel di server tujuan sudah ada dengan nama yang sama di kategori tersebut
+      let destChan = targetExistingChannels.find(c => 
+        c.type === 0 && 
+        c.parent_id === targetCatId && 
+        c.name.toLowerCase().trim() === srcChan.name.toLowerCase().trim()
+      );
+
+      if (!destChan) {
+        logger.info(`AutoLinkManager: [${index+1}/${total}] Membuat channel tujuan #${srcChan.name}...`);
+        this._notify('info', `[${index+1}/${total}] Membuat channel tujuan <b>#${srcChan.name}</b>...`);
+        destChan = await discordBotPool.createChannel(
+          targetGuildId,
+          targetCatId,
+          srcChan.name,
+          srcChan.topic || `Mirror dari #${srcChan.name}`,
+          (waitSec) => {
+            this._notify('warning', `⏳ Channel #${srcChan.name}: Menunggu cooldown rate-limit channel (${waitSec}s)...`);
+          }
+        );
+        targetExistingChannels.push(destChan);
+        await new Promise(r => setTimeout(r, 600));
+      }
+
+      // 2. Buat / Ambil Webhook di channel tujuan dengan rotasi bot dan auto-wait rate limit
+      logger.info(`AutoLinkManager: [${index+1}/${total}] Menghubungkan webhook untuk #${destChan.name}...`);
+      this._notify('info', `[${index+1}/${total}] Menghubungkan webhook untuk <b>#${destChan.name}</b>...`);
+      const webhook = await discordBotPool.createWebhook(
+        destChan.id,
+        `Nexus Mirror - ${srcChan.name}`,
+        (waitSec, round, maxRounds) => {
+          this._notify('warning', `⏳ Channel #${destChan.name}: Cooldown rate-limit Discord (${waitSec}s). Sistem sedang antre, JANGAN ditutup... [Antrean ${round}/${maxRounds}]`);
+        }
+      );
+
+      // 3. Simpan ke channelStore dengan category yang rapi
+      const existing = channelStore.find(srcChan.id);
+      channelStore.add({
+        category: finalCategoryName,
+        name: srcChan.name,
+        discordId: srcChan.id,
+        dcWebhookUrl: webhook.url,
+        tgChatId: existing?.tgChatId || '',
+        botKey: existing?.botKey || '1',
+        threadId: existing?.threadId || null,
+        dcThreadId: existing?.dcThreadId || null,
+        dcCustomUsername: existing?.dcCustomUsername || null,
+        dcCustomAvatarUrl: existing?.dcCustomAvatarUrl || null,
+        dcAutoPing: existing?.dcAutoPing || null,
+        dcOnlyWithMedia: existing?.dcOnlyWithMedia || false,
+        dcStripInvites: existing?.dcStripInvites !== false,
+      });
+
+      if (existing) {
+        results.updated.push({ name: srcChan.name, discordId: srcChan.id, webhookUrl: webhook.url });
+      } else {
+        results.created.push({ name: srcChan.name, discordId: srcChan.id, webhookUrl: webhook.url });
+      }
+
+      await new Promise(r => setTimeout(r, 800));
+    };
+
+    // Putaran Pertama (First Pass)
+    const failedChannels = [];
     for (let i = 0; i < preview.channels.length; i++) {
       const srcChan = preview.channels[i];
-
       try {
-        // Cek apakah channel di server tujuan sudah ada dengan nama yang sama di kategori tersebut
-        let destChan = targetExistingChannels.find(c => 
-          c.type === 0 && 
-          c.parent_id === targetCatId && 
-          c.name.toLowerCase().trim() === srcChan.name.toLowerCase().trim()
-        );
-
-        if (!destChan) {
-          // Buat channel baru di server tujuan
-          logger.info(`AutoLinkManager: [${i+1}/${preview.channels.length}] Membuat channel tujuan #${srcChan.name}...`);
-          destChan = await discordBotPool.createChannel(
-            targetGuildId,
-            targetCatId,
-            srcChan.name,
-            srcChan.topic || `Mirror dari #${srcChan.name}`
-          );
-          // Beri jeda kecil agar Discord menyelesaikan pembuatan channel
-          await new Promise(r => setTimeout(r, 400));
-        }
-
-        // Buat Webhook di channel tujuan dengan rotasi bot
-        logger.info(`AutoLinkManager: Membuat webhook untuk #${destChan.name}...`);
-        const webhook = await discordBotPool.createWebhook(
-          destChan.id,
-          `Nexus Mirror - ${srcChan.name}`
-        );
-
-        // Simpan ke channelStore dengan category yang rapi
-        const existing = channelStore.find(srcChan.id);
-        const savedChannel = channelStore.add({
-          category: finalCategoryName,
-          name: srcChan.name,
-          discordId: srcChan.id,
-          dcWebhookUrl: webhook.url,
-          tgChatId: existing?.tgChatId || '',
-          botKey: existing?.botKey || '1',
-          threadId: existing?.threadId || null,
-          dcThreadId: existing?.dcThreadId || null,
-          dcCustomUsername: existing?.dcCustomUsername || null,
-          dcCustomAvatarUrl: existing?.dcCustomAvatarUrl || null,
-          dcAutoPing: existing?.dcAutoPing || null,
-          dcOnlyWithMedia: existing?.dcOnlyWithMedia || false,
-          dcStripInvites: existing?.dcStripInvites !== false,
-        });
-
-        if (existing) {
-          results.updated.push({ name: srcChan.name, discordId: srcChan.id, webhookUrl: webhook.url });
-        } else {
-          results.created.push({ name: srcChan.name, discordId: srcChan.id, webhookUrl: webhook.url });
-        }
-
-        // Jeda anti-spam aman
-        await new Promise(r => setTimeout(r, 500));
-
+        await processChannel(srcChan, i, preview.channels.length);
       } catch (err) {
-        logger.error(`AutoLinkManager: Gagal memproses channel #${srcChan.name}`, err.message);
-        results.errors.push({ name: srcChan.name, discordId: srcChan.id, error: err.message });
+        logger.warn(`AutoLinkManager: Channel #${srcChan.name} masuk antrean coba ulang: ${err.message}`);
+        failedChannels.push({ channel: srcChan, originalIndex: i, error: err.message });
+      }
+    }
+
+    // Putaran Kedua (Second Pass) untuk channel yang sempat rate-limit agar TIDAK ADA YANG TERLEWAT
+    if (failedChannels.length > 0) {
+      logger.info(`AutoLinkManager: Menjalankan putaran kedua untuk ${failedChannels.length} channel yang sempat tertunda...`);
+      this._notify('warning', `🔄 Memproses ulang <b>${failedChannels.length} channel</b> yang sempat terkena jeda rate-limit agar tidak ada yang terlewat...`);
+      await new Promise(r => setTimeout(r, 5000));
+
+      for (const item of failedChannels) {
+        try {
+          await processChannel(item.channel, item.originalIndex, preview.channels.length);
+        } catch (retryErr) {
+          logger.error(`AutoLinkManager: Channel #${item.channel.name} tetap gagal setelah putaran kedua: ${retryErr.message}`);
+          results.errors.push({ name: item.channel.name, discordId: item.channel.id, error: retryErr.message });
+        }
       }
     }
 
@@ -343,9 +369,80 @@ class AutoLinkManager {
     }
     this._saveRules();
 
-    this._notify('success', `✨ Auto-Link Selesai: <b>${results.created.length + results.updated.length} channel</b> di kategori <b>${finalCategoryName}</b> berhasil disambungkan!`);
+    const successCount = results.created.length + results.updated.length;
+    if (results.errors.length === 0) {
+      this._notify('success', `✨ Auto-Link Sempurna: Seluruh <b>${successCount} channel</b> di kategori <b>${finalCategoryName}</b> berhasil dibuatkan webhook 100%!`);
+    } else {
+      this._notify('warning', `⚠️ Auto-Link Selesai: <b>${successCount} channel</b> sukses terhubung, <b>${results.errors.length} channel</b> kendala.`);
+    }
 
     return results;
+  }
+
+  /**
+   * Pindai dan lengkapi webhook untuk channel-channel yang belum memiliki webhook
+   * @param {{ targetGuildId: string, categoryName?: string }} params
+   */
+  async repairMissingWebhooks({ targetGuildId, categoryName = null }) {
+    if (discordBotPool.size === 0) {
+      throw new Error('Belum ada Bot Discord yang terdaftar di Bot Pool.');
+    }
+
+    // Filter channel dari channelStore yang belum punya dcWebhookUrl
+    const allChannels = channelStore.list();
+    const targetChannels = allChannels.filter(c => {
+      if (categoryName && (c.category || 'General').toLowerCase().trim() !== String(categoryName).toLowerCase().trim()) {
+        return false;
+      }
+      return !c.dcWebhookUrl || !c.dcWebhookUrl.trim();
+    });
+
+    if (targetChannels.length === 0) {
+      return { totalChecked: allChannels.length, fixed: [], errors: [], message: 'Semua channel sudah memiliki webhook!' };
+    }
+
+    // Ambil channel di target guild
+    let destGuildChannels = [];
+    try {
+      destGuildChannels = await discordBotPool.getGuildChannels(targetGuildId);
+    } catch (err) {
+      throw new Error(`Gagal membaca server tujuan: ${err.message}`);
+    }
+
+    const report = {
+      totalChecked: targetChannels.length,
+      fixed: [],
+      errors: [],
+    };
+
+    for (let i = 0; i < targetChannels.length; i++) {
+      const ch = targetChannels[i];
+      try {
+        // Cari channel di target guild berdasarkan nama
+        const dest = destGuildChannels.find(d => 
+          d.type === 0 && d.name.toLowerCase().trim() === ch.name.toLowerCase().trim()
+        );
+
+        if (!dest) {
+          report.errors.push({ name: ch.name, error: 'Channel teks tujuan tidak ditemukan di server target' });
+          continue;
+        }
+
+        this._notify('info', `[${i+1}/${targetChannels.length}] Memperbaiki webhook untuk <b>#${dest.name}</b>...`);
+        const webhook = await discordBotPool.createWebhook(dest.id, `Nexus Mirror - ${ch.name}`);
+
+        ch.dcWebhookUrl = webhook.url;
+        channelStore.add(ch);
+        report.fixed.push({ name: ch.name, webhookUrl: webhook.url });
+        await new Promise(r => setTimeout(r, 600));
+
+      } catch (err) {
+        report.errors.push({ name: ch.name, error: err.message });
+      }
+    }
+
+    this._notify('success', `🛠️ Selesai memperbaiki webhook: <b>${report.fixed.length} channel</b> berhasil dilengkapi!`);
+    return report;
   }
 
   /**
