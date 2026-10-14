@@ -508,19 +508,17 @@ details.dc-advanced-collapse[open] summary.dc-collapse-summary .toggle-icon {
 .req-star { color: var(--danger-color); font-weight: 700; margin-left: 2px; }
 .opt-tag { font-size: 0.72rem; color: var(--text-secondary); font-weight: 400; margin-left: 4px; }
 .form-hint {
-    display: flex;
-    align-items: flex-start;
-    gap: 5px;
-    font-size: 0.75rem;
+    display: block;
+    font-size: 0.78rem;
     color: var(--text-secondary);
-    margin-top: 4px;
-    line-height: 1.35;
+    margin-top: 6px;
+    line-height: 1.45;
 }
 .form-hint i {
     font-size: 0.85rem;
     color: var(--info-color);
-    flex-shrink: 0;
-    margin-top: 2px;
+    vertical-align: -1px;
+    margin-right: 4px;
 }
 .form-hint code {
     background: rgba(255, 255, 255, 0.08);

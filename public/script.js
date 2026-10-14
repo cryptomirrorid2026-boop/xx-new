@@ -1186,6 +1186,21 @@ async function loadBotPool() {
     }
 }
 
+const btnToggleBotTokenEye = document.getElementById('btn-toggle-bot-token-eye');
+if (btnToggleBotTokenEye) {
+    btnToggleBotTokenEye.addEventListener('click', () => {
+        const input = document.getElementById('input-new-bot-token');
+        const icon = document.getElementById('icon-bot-token-eye');
+        if (input.type === 'password') {
+            input.type = 'text';
+            icon.className = 'bx bx-hide';
+        } else {
+            input.type = 'password';
+            icon.className = 'bx bx-show';
+        }
+    });
+}
+
 const formAddBotpool = document.getElementById('form-add-botpool');
 if (formAddBotpool) {
     formAddBotpool.addEventListener('submit', async e => {

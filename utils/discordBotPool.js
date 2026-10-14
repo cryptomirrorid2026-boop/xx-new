@@ -33,7 +33,10 @@ class DiscordBotPool {
 
   _clean(t) {
     if (!t || typeof t !== 'string') return '';
-    return t.replace(/^["']|["']$/g, '').trim();
+    return t
+      .replace(/^["']|["']$/g, '')
+      .replace(/^Bot\s+/i, '')
+      .trim();
   }
 
   _mask(t) {
@@ -93,22 +96,32 @@ class DiscordBotPool {
     try {
       const headers = {
         'Authorization': `Bot ${token}`,
-        'Content-Type': 'application/json',
-        'User-Agent': 'DiscordBot (NexusMirrorBot, 1.0)',
+        'User-Agent': 'DiscordBot (https://github.com/NexusMirror, 1.0.0)',
       };
-      const res = await axios({
+      const axiosConfig = {
         method,
         url: `${DISCORD_API_BASE}${endpoint}`,
         headers,
-        data,
-        timeout: 15000,
-      });
+        timeout: 20000,
+      };
+      if (data && method.toUpperCase() !== 'GET') {
+        headers['Content-Type'] = 'application/json';
+        axiosConfig.data = data;
+      }
+      const res = await axios(axiosConfig);
       return res.data;
     } catch (err) {
-      if (err.response?.status === 429 && retryCount < 3) {
+      const status = err.response?.status;
+      if (status === 429 && retryCount < 3) {
         const retryAfter = Math.ceil((err.response.data?.retry_after || 1) * 1000);
         logger.warn(`DiscordBotPool: Rate limited (429) pada endpoint ${endpoint}. Tunggu ${retryAfter}ms...`);
         await new Promise(r => setTimeout(r, retryAfter));
+        return this._request(token, method, endpoint, data, retryCount + 1);
+      }
+      if ([500, 502, 503, 504].includes(status) && retryCount < 3) {
+        const delay = (retryCount + 1) * 1500;
+        logger.warn(`DiscordBotPool: Discord API gateway error (${status}) pada ${endpoint}. Mencoba ulang dalam ${delay}ms... (Percobaan ${retryCount + 1}/3)`);
+        await new Promise(r => setTimeout(r, delay));
         return this._request(token, method, endpoint, data, retryCount + 1);
       }
       throw err;
@@ -123,17 +136,26 @@ class DiscordBotPool {
     if (!c) throw new Error('Token bot tidak boleh kosong');
     try {
       const data = await this._request(c, 'GET', '/users/@me');
+      if (!data || !data.id) {
+        throw new Error('Data bot tidak ditemukan dari Discord API');
+      }
       const info = {
         id: data.id,
         username: data.username,
         discriminator: data.discriminator || '0',
         avatar: data.avatar ? `https://cdn.discordapp.com/avatars/${data.id}/${data.avatar}.png` : null,
-        bot: true,
+        bot: Boolean(data.bot),
         valid: true,
       };
       this.cache.set(c, info);
       return info;
     } catch (err) {
+      if (err.response?.status === 401) {
+        throw new Error('Token Discord Bot salah / Unauthorized (401). Pastikan Anda menyalin BOT TOKEN resmi dari Discord Developer Portal (Applications > Bot > Reset Token).');
+      }
+      if ([500, 502, 503, 504].includes(err.response?.status)) {
+        throw new Error(`Discord API gateway error (${err.response.status} Bad Gateway). Discord server sedang sibuk, silakan klik Tambah Bot sekali lagi.`);
+      }
       const errMsg = err.response?.data?.message || err.message;
       throw new Error(`Token bot tidak valid: ${errMsg}`);
     }

@@ -1525,9 +1525,17 @@
                     Pasang <b>3–4 Bot Discord resmi</b> untuk membagi beban pembuatan Channel & Webhook di server tujuan secara rotasi agar <b>tidak terkena limit Discord API rate-limit</b>. Pastikan bot sudah diundang ke server tujuan dengan hak akses <i>Administrator</i> / <i>Manage Channels & Webhooks</i>.
                 </div>
 
-                <form id="form-add-botpool" style="display:flex; gap:10px; margin-bottom:18px;">
-                    <input type="password" id="input-new-bot-token" class="form-control" placeholder="Masukkan Discord Bot Token..." required style="flex:1;">
-                    <button type="submit" class="btn-primary" id="btn-save-bot-token"><i class='bx bx-plus'></i> Tambah Bot</button>
+                <form id="form-add-botpool" style="display:flex; flex-direction:column; gap:10px; margin-bottom:18px;">
+                    <div style="position:relative; display:flex; align-items:center;">
+                        <input type="password" id="input-new-bot-token" class="form-control" placeholder="Masukkan Discord Bot Token resmi..." required style="padding-right:42px;">
+                        <button type="button" id="btn-toggle-bot-token-eye" style="position:absolute; right:10px; background:transparent; border:none; color:var(--text-secondary); cursor:pointer; font-size:1.2rem; display:flex; align-items:center;" title="Tampilkan / Sembunyikan Token">
+                            <i class='bx bx-show' id="icon-bot-token-eye"></i>
+                        </button>
+                    </div>
+                    <div style="font-size:0.78rem; color:#94a3b8; line-height:1.45;">
+                        <i class='bx bx-info-circle' style="color:#38bdf8;"></i> Salin <b>Bot Token</b> dari <a href="https://discord.com/developers/applications" target="_blank" style="color:#60a5fa; text-decoration:underline;">Discord Developer Portal</a> ➔ Pilih App ➔ Tab <b>Bot</b> ➔ Klik <b>Reset Token</b> ➔ <b>Copy</b>. <i>(Bukan Client Secret / bukan Token Akun)</i>.
+                    </div>
+                    <button type="submit" class="btn-primary" id="btn-save-bot-token" style="align-self:flex-start; margin-top:2px;"><i class='bx bx-plus'></i> Tambah Bot ke Pool</button>
                 </form>
 
                 <div class="table-responsive">
