@@ -25,6 +25,23 @@ const discordBotPool = require('./discordBotPool');
 
 const RULES_FILE = path.join(__dirname, '..', 'data', 'autolink-rules.json');
 
+/**
+ * Normalisasi dan bersihkan nama channel dari emoji, prefix nomor (01-, 1.), dan karakter pemisah dekoratif
+ * @param {string} str 
+ * @returns {string}
+ */
+function cleanChannelName(str) {
+  if (!str || typeof str !== 'string') return '';
+  return str
+    .toLowerCase()
+    .trim()
+    .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1FA00}-\u{1FAFF}]/gu, '')
+    .replace(/^[0-9]+[.\-_\s|]+/g, '')
+    .replace(/[|\-_~•★✦►▶▸▹#]/g, ' ')
+    .replace(/\s+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 class AutoLinkManager {
   constructor() {
     this.rules = [];
@@ -167,6 +184,12 @@ class AutoLinkManager {
           logger.info(`AutoLinkManager: Channel diubah: #${oldChannel.name} ➔ #${newChannel.name}. Menyesuaikan nama di server tujuan...`);
           await this.syncRenamedChannel(oldChannel, newChannel, matchingRule);
         }
+
+        // D. Urutan posisi channel di server sumber berubah (Channel Dragged / Reordered)
+        if (oldChannel.position !== newChannel.position) {
+          logger.info(`AutoLinkManager: Posisi channel di server sumber berubah: #${newChannel.name} (${oldChannel.position} ➔ ${newChannel.position}). Menyelaraskan urutan di server tujuan...`);
+          await this.syncCategoryPositions(matchingRule);
+        }
       } catch (err) {
         logger.warn('AutoLinkManager: Error saat memproses channelUpdate', err.message);
       }
@@ -207,6 +230,58 @@ class AutoLinkManager {
       if (g) return { client: c, guild: g };
     }
     return null;
+  }
+
+  /**
+   * Cari atau buat kategori "[📁 ARSIP LAMA]" di server tujuan agar chat history tidak hilang
+   * @param {string} targetGuildId 
+   */
+  async _getOrCreateArchiveCategory(targetGuildId) {
+    const archiveCatName = '[📁 ARSIP LAMA]';
+    try {
+      const channels = await discordBotPool.getGuildChannels(targetGuildId);
+      let cat = channels.find(c => 
+        (c.type === 4 || c.type === 'GUILD_CATEGORY') && 
+        (c.name.toLowerCase().includes('arsip') || c.name.toLowerCase().includes('archive'))
+      );
+      if (!cat) {
+        logger.info(`AutoLinkManager: Membuat kategori arsip "${archiveCatName}" di server tujuan...`);
+        cat = await discordBotPool.createCategory(targetGuildId, archiveCatName);
+      }
+      return cat.id;
+    } catch (err) {
+      logger.warn(`AutoLinkManager: Gagal _getOrCreateArchiveCategory: ${err.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Selaraskan seluruh urutan channel di kategori tujuan sesuai urutan di server sumber (1:1)
+   */
+  async syncCategoryPositions(rule) {
+    try {
+      if (!rule?.sourceGuildId || !rule?.sourceCategoryId || !rule?.targetGuildId || !rule?.targetCategoryId) return;
+      const preview = await this.previewSourceCategory(rule.sourceGuildId, rule.sourceCategoryId);
+      const positionPayload = [];
+      for (let i = 0; i < preview.channels.length; i++) {
+        const src = preview.channels[i];
+        const stored = channelStore.find(src.id);
+        if (stored?.targetChannelId) {
+          positionPayload.push({
+            id: stored.targetChannelId,
+            position: i,
+            parent_id: rule.targetCategoryId,
+          });
+        }
+      }
+      if (positionPayload.length > 0) {
+        await discordBotPool.updateChannelPositions(rule.targetGuildId, positionPayload);
+        logger.success(`AutoLinkManager: Urutan posisi channel di kategori "${rule.categoryName}" berhasil diselaraskan otomatis (1:1).`);
+        this._notify('info', `🔄 Auto-Sync: Urutan posisi channel di kategori <b>${rule.categoryName}</b> otomatis diselaraskan (1:1)!`);
+      }
+    } catch (err) {
+      logger.warn('AutoLinkManager: Gagal syncCategoryPositions', err.message);
+    }
   }
 
   /**
@@ -313,7 +388,70 @@ class AutoLinkManager {
       }
     }
 
-    // 3. Proses setiap channel (dengan anti-skip dan antrean retry)
+    // 3. Smart Pairing untuk channel yang sudah ada di kategori target (Chat History Aman!)
+    const destCatChannels = targetExistingChannels
+      .filter(c => (c.type === 0 || c.type === 'GUILD_TEXT') && String(c.parent_id || c.parentId) === String(targetCatId))
+      .sort((a, b) => (a.position || 0) - (b.position || 0));
+
+    const matchedDestMap = new Map(); // srcId -> destChan
+    const usedDestIds = new Set();
+
+    // Pass 1: Stored targetChannelId
+    for (const src of preview.channels) {
+      const existing = channelStore.find(src.id);
+      if (existing?.targetChannelId) {
+        const dest = destCatChannels.find(d => d.id === existing.targetChannelId && !usedDestIds.has(d.id))
+                  || targetExistingChannels.find(d => d.id === existing.targetChannelId && !usedDestIds.has(d.id));
+        if (dest) {
+          usedDestIds.add(dest.id);
+          matchedDestMap.set(src.id, dest);
+        }
+      }
+    }
+
+    // Pass 2: Exact normalized name match
+    for (const src of preview.channels) {
+      if (matchedDestMap.has(src.id)) continue;
+      const srcNorm = src.name.trim().toLowerCase().replace(/\s+/g, '-');
+      const dest = destCatChannels.find(d => 
+        !usedDestIds.has(d.id) && d.name.trim().toLowerCase().replace(/\s+/g, '-') === srcNorm
+      );
+      if (dest) {
+        usedDestIds.add(dest.id);
+        matchedDestMap.set(src.id, dest);
+      }
+    }
+
+    // Pass 3: Cleaned / fuzzy name match (abaikan emoji, nomor urut 01-, spasi)
+    for (const src of preview.channels) {
+      if (matchedDestMap.has(src.id)) continue;
+      const srcClean = cleanChannelName(src.name);
+      if (!srcClean) continue;
+      const dest = destCatChannels.find(d => {
+        if (usedDestIds.has(d.id)) return false;
+        const dClean = cleanChannelName(d.name);
+        if (dClean && srcClean === dClean) return true;
+        if (srcClean.length >= 4 && dClean.length >= 4 && (srcClean.includes(dClean) || dClean.includes(srcClean))) return true;
+        return false;
+      });
+      if (dest) {
+        usedDestIds.add(dest.id);
+        matchedDestMap.set(src.id, dest);
+      }
+    }
+
+    // Pass 4: Sequential position-based pairing
+    // Memasangkan channel yang sudah ada di kategori tujuan agar TIDAK dibuat duplikat dan chat history aman
+    for (const src of preview.channels) {
+      if (matchedDestMap.has(src.id)) continue;
+      const nextUnused = destCatChannels.find(d => !usedDestIds.has(d.id));
+      if (nextUnused) {
+        usedDestIds.add(nextUnused.id);
+        matchedDestMap.set(src.id, nextUnused);
+      }
+    }
+
+    // 4. Proses setiap channel (dengan anti-skip dan antrean retry)
     const results = {
       categoryName: finalCategoryName,
       targetCategoryId: targetCatId,
@@ -326,23 +464,9 @@ class AutoLinkManager {
 
     const processChannel = async (srcChan, index, total) => {
       const existing = channelStore.find(srcChan.id);
+      let destChan = matchedDestMap.get(srcChan.id) || null;
 
-      // Cari channel tujuan berdasarkan targetChannelId jika ada, atau berdasarkan nama di bawah kategori tujuan
-      let destChan = null;
-      if (existing?.targetChannelId) {
-        destChan = targetExistingChannels.find(c => c.id === existing.targetChannelId);
-      }
-
-      const srcNorm = srcChan.name.toLowerCase().trim().replace(/\s+/g, '-');
-      if (!destChan) {
-        destChan = targetExistingChannels.find(c => 
-          c.type === 0 && 
-          String(c.parent_id) === String(targetCatId) && 
-          c.name.toLowerCase().trim().replace(/\s+/g, '-') === srcNorm
-        );
-      }
-
-      // Jika channel belum ada di server tujuan, buatkan
+      // Jika channel belum ada di server tujuan (channel kurang), buatkan
       if (!destChan) {
         logger.info(`AutoLinkManager: [${index+1}/${total}] Membuat channel tujuan #${srcChan.name}...`);
         this._notify('info', `[${index+1}/${total}] Membuat channel tujuan <b>#${srcChan.name}</b>...`);
@@ -359,10 +483,11 @@ class AutoLinkManager {
         await new Promise(r => setTimeout(r, 600));
       } else {
         // Jika channel tujuan ada tapi namanya tidak sama persis, rename agar sama persis ("biar sama mirip")
+        const srcNorm = srcChan.name.toLowerCase().trim().replace(/\s+/g, '-');
         const destNorm = destChan.name.toLowerCase().trim().replace(/\s+/g, '-');
         if (destNorm !== srcNorm) {
           logger.info(`AutoLinkManager: Menyesuaikan nama channel tujuan: #${destChan.name} ➔ #${srcChan.name}...`);
-          this._notify('info', `Menyesuaikan nama channel tujuan: #${destChan.name} ➔ <b>#${srcChan.name}</b>...`);
+          this._notify('info', `Menyesuaikan nama channel tujuan: #${destChan.name} ➔ <b>#${srcChan.name}</b> (Chat Aman ✅)...`);
           await discordBotPool.updateChannel(destChan.id, { name: srcChan.name });
           destChan.name = srcChan.name;
           results.renamed.push({ oldName: destChan.name, newName: srcChan.name, targetChannelId: destChan.id });
@@ -436,6 +561,25 @@ class AutoLinkManager {
         }
       }
     }
+
+    // Selaraskan urutan posisi channel di server tujuan (1:1)
+    try {
+      const positionPayload = [];
+      for (let i = 0; i < preview.channels.length; i++) {
+        const src = preview.channels[i];
+        const stored = channelStore.find(src.id);
+        if (stored?.targetChannelId) {
+          positionPayload.push({
+            id: stored.targetChannelId,
+            position: i,
+            parent_id: targetCatId,
+          });
+        }
+      }
+      if (positionPayload.length > 0) {
+        await discordBotPool.updateChannelPositions(targetGuildId, positionPayload);
+      }
+    } catch (_) {}
 
     // 4. Simpan / perbarui aturan Auto-Sync
     const ruleIndex = this.rules.findIndex(r => 
@@ -519,55 +663,107 @@ class AutoLinkManager {
     }
 
     const destCatChannels = targetCatId 
-      ? destGuildChannels.filter(c => c.type === 0 && String(c.parent_id) === String(targetCatId))
+      ? destGuildChannels.filter(c => (c.type === 0 || c.type === 'GUILD_TEXT') && String(c.parent_id || c.parentId) === String(targetCatId)).sort((a, b) => (a.position || 0) - (b.position || 0))
       : [];
 
     const storedCategoryChannels = channelStore.getByCategory(finalCategoryName);
 
+    // Multi-pass Smart Pairing (Prioritaskan melestarikan channel yang sudah ada agar chat history tidak hilang)
+    const matchedDestMap = new Map(); // srcId -> destChan
+    const usedDestIds = new Set();
+
+    // Pass 1: Stored mapping di channelStore
+    for (const src of srcChannels) {
+      const stored = channelStore.find(src.id);
+      if (stored?.targetChannelId) {
+        const destChan = destCatChannels.find(d => d.id === stored.targetChannelId && !usedDestIds.has(d.id))
+                      || destGuildChannels.find(d => d.id === stored.targetChannelId && !usedDestIds.has(d.id));
+        if (destChan) {
+          usedDestIds.add(destChan.id);
+          matchedDestMap.set(src.id, destChan);
+        }
+      }
+    }
+
+    // Pass 2: Exact normalized name match
+    for (const src of srcChannels) {
+      if (matchedDestMap.has(src.id)) continue;
+      const srcNorm = src.name.trim().toLowerCase().replace(/\s+/g, '-');
+      const destChan = destCatChannels.find(d => 
+        !usedDestIds.has(d.id) && d.name.trim().toLowerCase().replace(/\s+/g, '-') === srcNorm
+      );
+      if (destChan) {
+        usedDestIds.add(destChan.id);
+        matchedDestMap.set(src.id, destChan);
+      }
+    }
+
+    // Pass 3: Cleaned / Fuzzy name match (abaikan emoji, nomor urut 01-, spasi)
+    for (const src of srcChannels) {
+      if (matchedDestMap.has(src.id)) continue;
+      const srcClean = cleanChannelName(src.name);
+      if (!srcClean) continue;
+      const destChan = destCatChannels.find(d => {
+        if (usedDestIds.has(d.id)) return false;
+        const dClean = cleanChannelName(d.name);
+        if (dClean && srcClean === dClean) return true;
+        if (srcClean.length >= 4 && dClean.length >= 4 && (srcClean.includes(dClean) || dClean.includes(srcClean))) return true;
+        return false;
+      });
+      if (destChan) {
+        usedDestIds.add(destChan.id);
+        matchedDestMap.set(src.id, destChan);
+      }
+    }
+
+    // Pass 4: Webhook lookup jika ada di stored
+    for (const src of srcChannels) {
+      if (matchedDestMap.has(src.id)) continue;
+      const stored = channelStore.find(src.id);
+      if (stored?.dcWebhookUrl) {
+        try {
+          const wh = await discordBotPool.getWebhookDetails(stored.dcWebhookUrl);
+          if (wh?.channel_id && !usedDestIds.has(wh.channel_id)) {
+            const destChan = destCatChannels.find(d => d.id === wh.channel_id)
+                          || destGuildChannels.find(d => d.id === wh.channel_id);
+            if (destChan) {
+              usedDestIds.add(destChan.id);
+              matchedDestMap.set(src.id, destChan);
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
+    // Pass 5: Smart Sequential Pairing (Pasangkan channel yang sudah ada berdasarkan urutan posisi)
+    // JANGAN HAPUS channel yang sudah ada dan ada isinya di kategori tujuan!
+    // Pasangkan ke channel sumber yang belum memiliki padanan, lalu rename dan pasang webhook!
+    for (const src of srcChannels) {
+      if (matchedDestMap.has(src.id)) continue;
+      const nextUnusedDest = destCatChannels.find(d => !usedDestIds.has(d.id));
+      if (nextUnusedDest) {
+        usedDestIds.add(nextUnusedDest.id);
+        matchedDestMap.set(src.id, nextUnusedDest);
+      }
+    }
+
+    // Kategorikan hasil perbandingan
     const identical = [];
     const toRename = [];
     const toAdd = [];
     const toRepairWebhook = [];
-    const matchedDestIds = new Set();
-    const matchedSourceIds = new Set();
 
     for (const src of srcChannels) {
       const stored = channelStore.find(src.id);
-      let destChan = null;
-
-      // 1. Cari via stored targetChannelId
-      if (stored?.targetChannelId) {
-        destChan = destCatChannels.find(d => d.id === stored.targetChannelId)
-                || destGuildChannels.find(d => d.id === stored.targetChannelId);
-      }
-
-      // 2. Cari via nama yang mirip / exact di target category
-      const srcNorm = src.name.trim().toLowerCase().replace(/\s+/g, '-');
-      if (!destChan && destCatChannels.length > 0) {
-        destChan = destCatChannels.find(d => 
-          !matchedDestIds.has(d.id) && d.name.trim().toLowerCase().replace(/\s+/g, '-') === srcNorm
-        );
-      }
-
-      // 3. Cari via webhook detail jika ada
-      if (!destChan && stored?.dcWebhookUrl) {
-        try {
-          const wh = await discordBotPool.getWebhookDetails(stored.dcWebhookUrl);
-          if (wh?.channel_id) {
-            destChan = destCatChannels.find(d => d.id === wh.channel_id)
-                    || destGuildChannels.find(d => d.id === wh.channel_id);
-          }
-        } catch (_) {}
-      }
+      const destChan = matchedDestMap.get(src.id);
 
       if (destChan) {
-        matchedDestIds.add(destChan.id);
-        matchedSourceIds.add(src.id);
-
+        const srcNorm = src.name.trim().toLowerCase().replace(/\s+/g, '-');
         const destNorm = destChan.name.trim().toLowerCase().replace(/\s+/g, '-');
 
         if (srcNorm !== destNorm) {
-          // Kasus: Nama berbeda! Harus diubah namanya ("biar sama mirip")
+          // Kasus: Channel sudah ada di tujuan tapi nama berbeda ("biar sama mirip")
+          // RENAME nama channel tersebut & sambungkan webhook (Chat history tetap aman dan tidak hilang!)
           toRename.push({
             sourceId: src.id,
             sourceName: src.name,
@@ -593,7 +789,7 @@ class AutoLinkManager {
           });
         }
       } else {
-        // Kasus: Belum ada di server tujuan (Channel Kurang)
+        // Kasus: Belum ada di server tujuan (Channel Kurang) -> Tambahkan baru
         toAdd.push({
           sourceId: src.id,
           name: src.name,
@@ -602,10 +798,10 @@ class AutoLinkManager {
       }
     }
 
-    // Periksa channel yang ada di target / store tapi sudah TIDAK ADA di sumber (Channel Berlebih / Terhapus di Sumber)
+    // Periksa channel berlebih / terhapus
     const toRemove = [];
 
-    // Dari channelStore
+    // 1. Channel yang sebelumnya tersimpan di database mapping tapi sudah dihapus di server sumber
     for (const st of storedCategoryChannels) {
       if (!srcChannels.some(s => String(s.id) === String(st.discordId))) {
         toRemove.push({
@@ -617,15 +813,15 @@ class AutoLinkManager {
       }
     }
 
-    // Dari kategori tujuan di Discord yang tidak punya padanan di sumber
+    // 2. Channel di kategori tujuan yang benar-benar berlebih / tidak aktif (tidak ada pasangannya di sumber)
     for (const d of destCatChannels) {
-      if (!matchedDestIds.has(d.id)) {
+      if (!usedDestIds.has(d.id)) {
         if (!toRemove.some(r => r.targetChannelId === d.id)) {
           toRemove.push({
             discordId: null,
             name: d.name,
             targetChannelId: d.id,
-            reason: 'Channel di server tujuan tidak memiliki padanan di sumber',
+            reason: 'Channel berlebih di kategori server tujuan (tidak ada padanan di sumber)',
           });
         }
       }
@@ -653,6 +849,7 @@ class AutoLinkManager {
       toAdd,
       toRemove,
       toRepairWebhook,
+      srcChannels,
     };
   }
 
@@ -708,37 +905,60 @@ class AutoLinkManager {
 
     let currentAction = 0;
 
-    // ── Phase 1: Ubah Nama Channel yang Berbeda ("ada chanel yang tidak sama namanya biar sama mirip") ──
-    if (options.rename !== false && diff.toRename.length > 0) {
-      this._notify('info', `✏️ [1/4] Menyesuaikan nama <b>${diff.toRename.length} channel</b> agar sama persis...`);
+    // ── Phase 1: Hubungkan & Rename Channel yang Sudah Ada (Chat History Aman!) ──
+    if (diff.toRename.length > 0) {
+      this._notify('info', `✏️ [1/4] Menghubungkan & menyesuaikan <b>${diff.toRename.length} channel</b> yang sudah ada di tujuan...`);
       for (const item of diff.toRename) {
         currentAction++;
         try {
-          this._notify('info', `[${currentAction}/${totalActions}] Mengubah nama #${item.targetOldName} ➔ <b>#${item.targetNewName}</b>...`);
-          await discordBotPool.updateChannel(item.targetChannelId, {
-            name: item.targetNewName,
-          }, (waitSec) => {
-            this._notify('warning', `⏳ Channel #${item.targetNewName}: Menunggu cooldown (${waitSec}s)...`);
-          });
+          if (options.rename !== false) {
+            this._notify('info', `[${currentAction}/${totalActions}] Mengubah nama #${item.targetOldName} ➔ <b>#${item.targetNewName}</b>...`);
+            await discordBotPool.updateChannel(item.targetChannelId, {
+              name: item.targetNewName,
+            }, (waitSec) => {
+              this._notify('warning', `⏳ Channel #${item.targetNewName}: Menunggu cooldown (${waitSec}s)...`);
+            });
+          }
+
+          // Hubungkan / Dapatkan Webhook di channel tujuan yang sudah ada ini (Chat History Aman!)
+          this._notify('info', `Menghubungkan webhook untuk channel tujuan <b>#${item.targetNewName}</b>...`);
+          const webhook = await discordBotPool.createWebhook(
+            item.targetChannelId,
+            `Nexus Mirror - ${item.targetNewName}`,
+            (waitSec, round, maxRounds) => {
+              this._notify('warning', `⏳ Webhook #${item.targetNewName}: Cooldown rate-limit (${waitSec}s)...`);
+            }
+          );
 
           // Update di channelStore
           const ch = channelStore.find(item.sourceId);
-          if (ch) {
-            ch.name = item.targetNewName;
-            ch.targetChannelId = item.targetChannelId;
-            ch.targetGuildId = targetGuildId;
-            ch.category = finalCategoryName;
-            channelStore.add(ch);
-          }
+          channelStore.add({
+            category: finalCategoryName,
+            name: item.targetNewName,
+            discordId: item.sourceId,
+            dcWebhookUrl: webhook.url,
+            targetChannelId: item.targetChannelId,
+            targetGuildId: targetGuildId,
+            tgChatId: ch?.tgChatId || '',
+            botKey: ch?.botKey || '1',
+            threadId: ch?.threadId || null,
+            dcThreadId: ch?.dcThreadId || null,
+            dcCustomUsername: ch?.dcCustomUsername || null,
+            dcCustomAvatarUrl: ch?.dcCustomAvatarUrl || null,
+            dcAutoPing: ch?.dcAutoPing || null,
+            dcOnlyWithMedia: ch?.dcOnlyWithMedia || false,
+            dcStripInvites: ch?.dcStripInvites !== false,
+          });
 
           report.renamed.push({
             oldName: item.targetOldName,
             newName: item.targetNewName,
             targetChannelId: item.targetChannelId,
+            webhookUrl: webhook.url,
           });
           await new Promise(r => setTimeout(r, 600));
         } catch (err) {
-          logger.warn(`AutoLinkManager: Gagal rename channel #${item.targetNewName}: ${err.message}`);
+          logger.warn(`AutoLinkManager: Gagal rename/link channel #${item.targetNewName}: ${err.message}`);
           report.errors.push({ name: item.targetNewName, action: 'rename', error: err.message });
         }
       }
@@ -814,35 +1034,64 @@ class AutoLinkManager {
       }
     }
 
-    // ── Phase 3: Kurangi / Hapus Channel yang Terhapus di Sumber ("mengurangi secara otomatis") ──
-    if (options.remove !== false && diff.toRemove.length > 0) {
-      this._notify('info', `🗑️ [3/4] Mengurangi / menghapus <b>${diff.toRemove.length} channel</b> yang sudah tidak ada di sumber...`);
-      for (const item of diff.toRemove) {
-        currentAction++;
-        try {
-          this._notify('info', `[${currentAction}/${totalActions}] Menghapus channel <b>#${item.name}</b>...`);
-          if (item.targetChannelId) {
-            await discordBotPool.deleteChannel(item.targetChannelId, (waitSec) => {
-              this._notify('warning', `⏳ Menunggu cooldown delete (${waitSec}s)...`);
-            });
-          }
+    // ── Phase 3: Penanganan Channel Berlebih / Terhapus di Sumber (Mode Arsip / Hapus) ──
+    const removeAction = options.removeAction || (options.remove === false ? 'ignore' : 'archive');
+    if (removeAction !== 'ignore' && diff.toRemove.length > 0) {
+      if (removeAction === 'archive') {
+        this._notify('info', `📦 [3/5] Mengarsipkan <b>${diff.toRemove.length} channel</b> ke kategori [📁 ARSIP LAMA] (Chat Tetap Utuh ✅)...`);
+        const archiveCatId = await this._getOrCreateArchiveCategory(targetGuildId);
+        for (const item of diff.toRemove) {
+          currentAction++;
+          try {
+            this._notify('info', `[${currentAction}/${totalActions}] Memindahkan channel ke arsip: <b>#${item.name}</b>...`);
+            if (item.targetChannelId) {
+              const archiveName = item.name.toLowerCase().startsWith('arsip-') ? item.name : `arsip-${item.name}`;
+              await discordBotPool.updateChannel(item.targetChannelId, {
+                parent_id: archiveCatId || null,
+                name: archiveName,
+              });
+            }
 
-          if (item.discordId) {
-            channelStore.remove(item.discordId);
-          }
+            if (item.discordId) {
+              channelStore.remove(item.discordId);
+            }
 
-          report.removed.push({ name: item.name, targetChannelId: item.targetChannelId });
-          await new Promise(r => setTimeout(r, 500));
-        } catch (err) {
-          logger.warn(`AutoLinkManager: Gagal hapus channel #${item.name}: ${err.message}`);
-          report.errors.push({ name: item.name, action: 'remove', error: err.message });
+            report.removed.push({ name: item.name, targetChannelId: item.targetChannelId, action: 'archive' });
+            await new Promise(r => setTimeout(r, 500));
+          } catch (err) {
+            logger.warn(`AutoLinkManager: Gagal arsipkan channel #${item.name}: ${err.message}`);
+            report.errors.push({ name: item.name, action: 'archive', error: err.message });
+          }
+        }
+      } else if (removeAction === 'delete') {
+        this._notify('info', `🗑️ [3/5] Menghapus permanen <b>${diff.toRemove.length} channel</b> yang berlebih di Discord...`);
+        for (const item of diff.toRemove) {
+          currentAction++;
+          try {
+            this._notify('info', `[${currentAction}/${totalActions}] Menghapus channel <b>#${item.name}</b>...`);
+            if (item.targetChannelId) {
+              await discordBotPool.deleteChannel(item.targetChannelId, (waitSec) => {
+                this._notify('warning', `⏳ Menunggu cooldown delete (${waitSec}s)...`);
+              });
+            }
+
+            if (item.discordId) {
+              channelStore.remove(item.discordId);
+            }
+
+            report.removed.push({ name: item.name, targetChannelId: item.targetChannelId, action: 'delete' });
+            await new Promise(r => setTimeout(r, 500));
+          } catch (err) {
+            logger.warn(`AutoLinkManager: Gagal hapus channel #${item.name}: ${err.message}`);
+            report.errors.push({ name: item.name, action: 'remove', error: err.message });
+          }
         }
       }
     }
 
     // ── Phase 4: Lengkapi Webhook Kosong ──
     if (options.repairWebhook !== false && diff.toRepairWebhook.length > 0) {
-      this._notify('info', `🛠️ [4/4] Melengkapi <b>${diff.toRepairWebhook.length} webhook</b> yang kosong...`);
+      this._notify('info', `🛠️ [4/5] Melengkapi <b>${diff.toRepairWebhook.length} webhook</b> yang kosong...`);
       for (const item of diff.toRepairWebhook) {
         currentAction++;
         try {
@@ -860,6 +1109,45 @@ class AutoLinkManager {
         } catch (err) {
           report.errors.push({ name: item.name, action: 'repairWebhook', error: err.message });
         }
+      }
+    }
+
+    // ── Update Metadata Mapping untuk Channel Identik ──
+    if (diff.identical && diff.identical.length > 0) {
+      for (const item of diff.identical) {
+        const ch = channelStore.find(item.sourceId);
+        if (ch) {
+          ch.category = finalCategoryName;
+          ch.targetChannelId = item.targetChannelId;
+          ch.targetGuildId = targetGuildId;
+          channelStore.add(ch);
+        }
+      }
+    }
+
+    // ── Phase 5: Sinkronisasi Urutan Posisi Channel (Channel Order Sync 1:1) ──
+    if (options.position !== false && diff.srcChannels && diff.srcChannels.length > 0) {
+      this._notify('info', `🔄 [5/5] Menyelaraskan urutan posisi channel di server tujuan (1:1)...`);
+      try {
+        const positionPayload = [];
+        for (let i = 0; i < diff.srcChannels.length; i++) {
+          const src = diff.srcChannels[i];
+          const stored = channelStore.find(src.id);
+          const targetId = stored?.targetChannelId;
+          if (targetId) {
+            positionPayload.push({
+              id: targetId,
+              position: i,
+              parent_id: targetCatId,
+            });
+          }
+        }
+        if (positionPayload.length > 0) {
+          await discordBotPool.updateChannelPositions(targetGuildId, positionPayload);
+          this._notify('success', `✨ Urutan posisi channel berhasil diselaraskan 100% persis seperti server sumber!`);
+        }
+      } catch (posErr) {
+        logger.warn(`AutoLinkManager: Gagal sinkronisasi urutan posisi: ${posErr.message}`);
       }
     }
 
@@ -1093,17 +1381,25 @@ class AutoLinkManager {
         if (match) targetChanId = match.id;
       }
 
-      // Hapus target channel jika ditemukan
-      if (targetChanId && discordBotPool.size > 0) {
-        logger.info(`AutoLinkManager: Menghapus channel tujuan #${channel.name} (${targetChanId})...`);
-        await discordBotPool.deleteChannel(targetChanId);
+      // Pindahkan channel ke [📁 ARSIP LAMA] alih-alih dihapus permanen agar chat history tidak hilang
+      if (targetChanId && discordBotPool.size > 0 && rule?.targetGuildId) {
+        try {
+          const archiveCatId = await this._getOrCreateArchiveCategory(rule.targetGuildId);
+          logger.info(`AutoLinkManager: Memindahkan channel tujuan #${channel.name} (${targetChanId}) ke [📁 ARSIP LAMA]...`);
+          const archiveName = channel.name.toLowerCase().startsWith('arsip-') ? channel.name : `arsip-${channel.name}`;
+          await discordBotPool.updateChannel(targetChanId, {
+            parent_id: archiveCatId || null,
+            name: archiveName,
+          });
+          logger.success(`AutoLinkManager: Channel #${channel.name} berhasil dipindahkan ke kategori [📁 ARSIP LAMA].`);
+          this._notify('warning', `📦 Auto-Arsip: Channel <b>#${channel.name}</b> telah dihapus dari sumber dan dipindahkan ke <b>[📁 ARSIP LAMA]</b>. Chat lama tetap aman!`);
+        } catch (archErr) {
+          logger.warn(`AutoLinkManager: Gagal memindahkan channel ke arsip: ${archErr.message}`);
+        }
       }
 
-      // Hapus dari channelStore
+      // Hapus dari channelStore agar tidak meneruskan chat lagi
       channelStore.remove(channel.id);
-
-      logger.success(`AutoLinkManager: Channel #${channel.name} telah dikurangi/dihapus dari server tujuan dan mapping.`);
-      this._notify('warning', `🗑️ Auto-Reduce: Channel <b>#${channel.name}</b> telah dihapus dari sumber. Channel tujuan otomatis dihapus & mapping dibersihkan.`);
     } catch (err) {
       logger.error(`AutoLinkManager: Gagal auto-reduce channel #${channel.name}`, err.message);
       this._notify('error', `⚠️ Gagal auto-reduce untuk #${channel.name}: ${err.message}`);

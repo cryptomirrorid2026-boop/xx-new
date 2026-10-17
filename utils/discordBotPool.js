@@ -368,6 +368,30 @@ class DiscordBotPool {
   }
 
   /**
+   * Update urutan posisi channel di server tujuan (Bulk / Batch position update)
+   * @param {string} guildId 
+   * @param {Array<{ id: string, position: number, parent_id?: string }>} positions 
+   */
+  async updateChannelPositions(guildId, positions) {
+    if (!positions || positions.length === 0) return true;
+    const token = this.getNextBotToken();
+    try {
+      return await this._request(token, 'PATCH', `/guilds/${guildId}/channels`, positions);
+    } catch (err) {
+      logger.warn(`DiscordBotPool: Gagal bulk update urutan channel posisi: ${err.message}. Mencoba per-channel...`);
+      for (const item of positions) {
+        try {
+          const payload = { position: item.position };
+          if (item.parent_id) payload.parent_id = item.parent_id;
+          await this.updateChannel(item.id, payload);
+          await new Promise(r => setTimeout(r, 400));
+        } catch (_) {}
+      }
+      return true;
+    }
+  }
+
+  /**
    * Hapus channel di server tujuan via Bot
    * Dilengkapi auto-wait rate limit
    * @param {string} channelId 

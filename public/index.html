@@ -1482,7 +1482,7 @@
                     <!-- Options Panel Penyelarasan / Rekonsiliasi Otomatis -->
                     <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px 14px; margin-top: 14px;">
                         <strong style="font-size:0.86rem; color:var(--text-primary); display:block; margin-bottom:8px;">
-                            <i class='bx bx-sync' style="color:#6366f1;"></i> Opsi Penyelarasan Otomatis (Anti-Beda & Anti-Skip):
+                            <i class='bx bx-sync' style="color:#6366f1;"></i> Opsi Penyelarasan Otomatis (Smart Pairing & Anti-Skip):
                         </strong>
                         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size:0.82rem;">
                             <label style="cursor:pointer; display:flex; align-items:center; gap:6px;">
@@ -1494,9 +1494,35 @@
                                 <span>Buat Channel yang Kurang</span>
                             </label>
                             <label style="cursor:pointer; display:flex; align-items:center; gap:6px;">
-                                <input type="checkbox" id="autolink-opt-remove" checked style="accent-color:#ef4444; width:16px; height:16px;">
-                                <span>Hapus Channel yang Terhapus di Sumber</span>
+                                <input type="checkbox" id="autolink-opt-position" checked style="accent-color:#a855f7; width:16px; height:16px;">
+                                <span>Sinkronkan Urutan Posisi (1:1)</span>
                             </label>
+                        </div>
+
+                        <!-- Pilihan Penanganan Channel Berlebih / Terhapus -->
+                        <div style="margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.06); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                            <span style="font-size:0.82rem; color:var(--text-secondary); display:flex; align-items:center; gap:5px;">
+                                <i class='bx bx-archive-in' style="color:#f59e0b;"></i> Tindakan Channel Berlebih:
+                            </span>
+                            <div style="display:flex; gap:12px; font-size:0.82rem; flex-wrap:wrap;">
+                                <label style="cursor:pointer; display:flex; align-items:center; gap:5px; color:#10b981; font-weight:600;" title="Pindahkan ke kategori arsip agar riwayat chat tidak hilang">
+                                    <input type="radio" name="autolink-remove-action" value="archive" checked style="accent-color:#10b981;">
+                                    <span>Pindahkan ke [📁 ARSIP LAMA] (Aman ✅)</span>
+                                </label>
+                                <label style="cursor:pointer; display:flex; align-items:center; gap:5px; color:#f87171;">
+                                    <input type="radio" name="autolink-remove-action" value="delete" style="accent-color:#ef4444;">
+                                    <span>Hapus Permanen</span>
+                                </label>
+                                <label style="cursor:pointer; display:flex; align-items:center; gap:5px; color:var(--text-secondary);">
+                                    <input type="radio" name="autolink-remove-action" value="ignore" style="accent-color:#6366f1;">
+                                    <span>Biarkan Saja</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div style="margin-top:8px; font-size:0.75rem; color:#10b981; display:flex; align-items:center; gap:6px;">
+                            <i class='bx bx-check-shield' style="font-size:0.95rem;"></i>
+                            <span><b>Proteksi Chat & Urutan Aktif:</b> Chat lama tidak akan hilang, channel berlebih dipindahkan ke arsip, dan urutan channel diselaraskan persis 1:1.</span>
                         </div>
                     </div>
 

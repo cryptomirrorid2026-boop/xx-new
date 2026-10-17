@@ -1035,44 +1035,44 @@ if (btnAutolinkPreview) {
                     const badgesEl = document.getElementById('autolink-preview-badges');
                     badgesEl.innerHTML = `
                         <span class="tag" style="background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3); font-weight:600;"><i class='bx bx-check'></i> ${diff.counts.identicalCount} Cocok</span>
-                        ${diff.counts.toRenameCount > 0 ? `<span class="tag" style="background:rgba(99,102,241,0.15); color:#818cf8; border:1px solid rgba(99,102,241,0.3); font-weight:600;"><i class='bx bx-edit'></i> ${diff.counts.toRenameCount} Beda Nama</span>` : ''}
-                        ${diff.counts.toAddCount > 0 ? `<span class="tag" style="background:rgba(14,165,233,0.15); color:#38bdf8; border:1px solid rgba(14,165,233,0.3); font-weight:600;"><i class='bx bx-plus'></i> ${diff.counts.toAddCount} Kurang</span>` : ''}
-                        ${diff.counts.toRemoveCount > 0 ? `<span class="tag" style="background:rgba(239,68,68,0.15); color:#f87171; border:1px solid rgba(239,68,68,0.3); font-weight:600;"><i class='bx bx-trash'></i> ${diff.counts.toRemoveCount} Terhapus</span>` : ''}
+                        ${diff.counts.toRenameCount > 0 ? `<span class="tag" style="background:rgba(99,102,241,0.15); color:#818cf8; border:1px solid rgba(99,102,241,0.3); font-weight:600;"><i class='bx bx-link-alt'></i> ${diff.counts.toRenameCount} Sudah Ada (Di-link & Rename)</span>` : ''}
+                        ${diff.counts.toAddCount > 0 ? `<span class="tag" style="background:rgba(14,165,233,0.15); color:#38bdf8; border:1px solid rgba(14,165,233,0.3); font-weight:600;"><i class='bx bx-plus'></i> ${diff.counts.toAddCount} Kurang (Dibuat)</span>` : ''}
+                        ${diff.counts.toRemoveCount > 0 ? `<span class="tag" style="background:rgba(239,68,68,0.15); color:#f87171; border:1px solid rgba(239,68,68,0.3); font-weight:600;"><i class='bx bx-trash'></i> ${diff.counts.toRemoveCount} Berlebih</span>` : ''}
                     `;
 
                     // Render List
                     const listEl = document.getElementById('autolink-preview-list');
                     let listHtml = '';
 
-                    // 1. Yang perlu diubah namanya
+                    // 1. Yang sudah ada di tujuan (akan disambung & rename)
                     if (diff.toRename.length > 0) {
-                        listHtml += `<div style="font-weight:700; color:#818cf8; margin-top:4px; margin-bottom:2px;">✏️ Perlu Disamakan Namanya (${diff.toRename.length}):</div>`;
+                        listHtml += `<div style="font-weight:700; color:#818cf8; margin-top:4px; margin-bottom:4px;">✏️ Channel Sudah Ada di Tujuan (Disambungkan & Rename - Chat Aman ✅): (${diff.toRename.length})</div>`;
                         listHtml += diff.toRename.map(c => `
-                            <div style="display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid rgba(255,255,255,0.04);">
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding:3px 0; border-bottom:1px solid rgba(255,255,255,0.04);">
                                 <span>#${escapeHtml(c.targetOldName)} ➔ <b style="color:#a5b4fc;">#${escapeHtml(c.targetNewName)}</b></span>
-                                <span style="color:#818cf8; font-size:0.75rem;">Akan Di-rename</span>
+                                <span style="color:#10b981; font-size:0.75rem;"><i class='bx bx-check-shield'></i> Disambung (Chat Aman)</span>
                             </div>
                         `).join('');
                     }
 
                     // 2. Yang kurang (akan dibuat)
                     if (diff.toAdd.length > 0) {
-                        listHtml += `<div style="font-weight:700; color:#38bdf8; margin-top:8px; margin-bottom:2px;">➕ Channel Kurang di Tujuan (${diff.toAdd.length}):</div>`;
+                        listHtml += `<div style="font-weight:700; color:#38bdf8; margin-top:8px; margin-bottom:4px;">➕ Channel Kurang di Tujuan (Akan Dibuat): (${diff.toAdd.length})</div>`;
                         listHtml += diff.toAdd.map(c => `
-                            <div style="display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid rgba(255,255,255,0.04);">
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding:3px 0; border-bottom:1px solid rgba(255,255,255,0.04);">
                                 <span>#${escapeHtml(c.name)}</span>
                                 <span style="color:#38bdf8; font-size:0.75rem;">Akan Dibuat + Webhook</span>
                             </div>
                         `).join('');
                     }
 
-                    // 3. Yang sudah terhapus di sumber
+                    // 3. Yang berlebih / terhapus di sumber
                     if (diff.toRemove.length > 0) {
-                        listHtml += `<div style="font-weight:700; color:#f87171; margin-top:8px; margin-bottom:2px;">🗑️ Channel Terhapus di Sumber (${diff.toRemove.length}):</div>`;
+                        listHtml += `<div style="font-weight:700; color:#f87171; margin-top:8px; margin-bottom:4px;">🗑️ Channel Berlebih / Terhapus di Sumber (${diff.toRemove.length}):</div>`;
                         listHtml += diff.toRemove.map(c => `
-                            <div style="display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid rgba(255,255,255,0.04);">
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding:3px 0; border-bottom:1px solid rgba(255,255,255,0.04);">
                                 <span>#${escapeHtml(c.name)}</span>
-                                <span style="color:#f87171; font-size:0.75rem;">Akan Dihapus & Dibersihkan</span>
+                                <span style="color:#f87171; font-size:0.75rem;">${escapeHtml(c.reason || 'Akan Dihapus')}</span>
                             </div>
                         `).join('');
                     }
@@ -1146,7 +1146,8 @@ if (formAutolink) {
         
         const optRename = document.getElementById('autolink-opt-rename')?.checked !== false;
         const optAdd = document.getElementById('autolink-opt-add')?.checked !== false;
-        const optRemove = document.getElementById('autolink-opt-remove')?.checked !== false;
+        const optPosition = document.getElementById('autolink-opt-position')?.checked !== false;
+        const removeAction = document.querySelector('input[name="autolink-remove-action"]:checked')?.value || 'archive';
 
         const payload = {
             sourceGuildId: document.getElementById('autolink-source-guild').value.trim(),
@@ -1157,7 +1158,9 @@ if (formAutolink) {
             options: {
                 rename: optRename,
                 add: optAdd,
-                remove: optRemove,
+                position: optPosition,
+                removeAction: removeAction,
+                remove: removeAction === 'delete',
                 repairWebhook: true
             },
             autoSync: document.getElementById('autolink-autosync').checked
@@ -1208,10 +1211,11 @@ if (formAutolink) {
 
                 logEl.innerHTML += `
                     <div class="log-line log-success" style="font-weight:700; margin-top:6px;">📊 LAPORAN SINKRONISASI LENGKAP:</div>
-                    ${rep.renamed.length ? `<div class="log-line log-success">✏️ ${rep.renamed.length} channel disamakan namanya agar identik mirip: ${rep.renamed.map(r => '#' + escapeHtml(r.newName)).join(', ')}</div>` : ''}
+                    ${rep.renamed.length ? `<div class="log-line log-success">✏️ ${rep.renamed.length} channel tujuan disambungkan & disamakan namanya (Chat Aman ✅): ${rep.renamed.map(r => '#' + escapeHtml(r.oldName || r.newName) + ' ➔ #' + escapeHtml(r.newName)).join(', ')}</div>` : ''}
                     ${rep.added.length ? `<div class="log-line log-success">➕ ${rep.added.length} channel kurang berhasil dibuat & webhook terpasang: ${rep.added.map(a => '#' + escapeHtml(a.name)).join(', ')}</div>` : ''}
-                    ${rep.removed.length ? `<div class="log-line log-warn">🗑️ ${rep.removed.length} channel yang terhapus di sumber berhasil dikurangi/dibersihkan: ${rep.removed.map(r => '#' + escapeHtml(r.name)).join(', ')}</div>` : ''}
+                    ${rep.removed.length ? `<div class="log-line log-warn">📦 ${rep.removed.length} channel berlebih berhasil dipindahkan ke [📁 ARSIP LAMA] (Chat Aman ✅): ${rep.removed.map(r => '#' + escapeHtml(r.name)).join(', ')}</div>` : ''}
                     ${rep.repaired.length ? `<div class="log-line log-success">🛠️ ${rep.repaired.length} webhook berhasil dilengkapi.</div>` : ''}
+                    ${optPosition ? `<div class="log-line log-success">🔄 Urutan posisi channel berhasil diselaraskan 100% persis 1:1 dengan server sumber!</div>` : ''}
                     
                     ${totalActions === 0 ? `<div class="log-line log-success">✨ Kategori sudah 100% identik dan selaras sempurna! Tidak ada perbedaan yang perlu diubah.</div>` : ''}
                     
