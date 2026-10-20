@@ -33,10 +33,20 @@ if [ ! -d "node_modules" ]; then
     npm install
 fi
 
-echo "🔄 [5/5] Mengaktifkan Bot & Auto-Start Systemd VPS..."
+# Muat APP_NAME dari .env jika ada
+APP_NAME="discord-to-telegram-mirror"
+if [ -f ".env" ]; then
+    ENV_APP_NAME=$(grep -E "^PM2_APP_NAME=" .env | cut -d '=' -f2 | tr -d ' "\r\n')
+    if [ -n "$ENV_APP_NAME" ]; then
+        APP_NAME="$ENV_APP_NAME"
+    fi
+fi
 
-# Hentikan proses lama jika ada
-pm2 delete all > /dev/null 2>&1 || true
+# Hentikan HANYA proses bot ini (JANGAN 'pm2 delete all' agar project Store dll TIDAK terhapus!)
+echo "🛑 Menghentikan proses lama bot ($APP_NAME) jika ada..."
+pm2 delete "$APP_NAME" > /dev/null 2>&1 || true
+pm2 delete discord-to-telegram-mirror > /dev/null 2>&1 || true
+pm2 delete nexus-dashboard-tunnel > /dev/null 2>&1 || true
 
 # Jalankan bot via ecosystem.config.js
 pm2 start ecosystem.config.js --env production

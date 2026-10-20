@@ -56,10 +56,10 @@ const ngrokToken = process.env.NGROK_AUTHTOKEN || process.env.NGROK_TOKEN;
 const ngrokDomain = process.env.NGROK_DOMAIN;
 const cfToken = process.env.TUNNEL_TOKEN || process.env.CLOUDFLARE_TUNNEL_TOKEN;
 
-// Cloudflare diaktifkan secara default (ANTI-BENTROK) terlepas dari settingan lama di .env
-const shouldRunCloudflare = process.env.ENABLE_CLOUDFLARE !== 'false' && process.env.ENABLE_CLOUDFLARE_TUNNEL !== 'false';
-// Ngrok aktif jika token tersedia dan tidak dimatikan secara eksplisit
-const shouldRunNgrok = Boolean(ngrokToken) && process.env.ENABLE_NGROK !== 'false';
+// Cloudflare diaktifkan secara default (ANTI-BENTROK)
+const shouldRunCloudflare = process.env.ENABLE_CLOUDFLARE !== 'false' && process.env.ENABLE_CLOUDFLARE_TUNNEL !== 'false' && providerConfig !== 'ngrok';
+// Ngrok aktif jika token tersedia, provider mengizinkan, dan tidak dimatikan secara eksplisit
+const shouldRunNgrok = Boolean(ngrokToken) && process.env.ENABLE_NGROK !== 'false' && process.env.ENABLE_NGROK_TUNNEL !== 'false' && providerConfig !== 'cloudflare';
 
 // ─── Status Tunnel ─────────────────────────────────────────────────────────────
 const tunnelState = {

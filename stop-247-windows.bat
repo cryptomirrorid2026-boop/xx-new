@@ -16,11 +16,15 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 
-echo [1/2] Menghentikan proses bot...
-schtasks /end /tn "DiscordTelegramMirror247" >nul 2>&1
-taskkill /F /IM node.exe >nul 2>&1
+echo [1/3] Menghentikan proses bot di PM2 (jika ada)...
+call npx pm2 delete discord-to-telegram-mirror >nul 2>&1
+call npx pm2 save --force >nul 2>&1
 
-echo [2/2] Menghapus pendaftaran otomatis di Task Scheduler...
+echo [2/3] Menghentikan proses bot di Task Scheduler & background...
+schtasks /end /tn "DiscordTelegramMirror247" >nul 2>&1
+taskkill /F /FI "WINDOWTITLE eq Discord to Telegram Mirror Bot*" >nul 2>&1
+
+echo [3/3] Menghapus pendaftaran otomatis di Task Scheduler...
 schtasks /delete /tn "DiscordTelegramMirror247" /f >nul 2>&1
 
 echo.
