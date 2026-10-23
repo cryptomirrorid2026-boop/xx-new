@@ -285,20 +285,37 @@ document.querySelectorAll('.view-all-link').forEach(a => {
 // ─── Toast ────────────────────────────────────────────────────
 const toast = document.getElementById('toast');
 function showToast(msg, type = 'success') {
-    const icons = { success: 'bx-check-circle', error: 'bx-error-circle', warning: 'bx-info-circle' };
-    toast.innerHTML = `<i class='bx ${icons[type] || icons.success}'></i> ${msg}`;
-    toast.className = `toast ${type} show`;
-    clearTimeout(toast._t);
-    toast._t = setTimeout(() => toast.classList.remove('show'), 3500);
+    const icons = { success: 'bx-check-circle', error: 'bx-error-circle', warning: 'bx-info-circle', info: 'bx-info-circle' };
+    const el = document.getElementById('toast') || toast;
+    if (el) {
+        el.innerHTML = `<i class='bx ${icons[type] || icons.success}'></i> ${msg}`;
+        el.className = `toast ${type} show`;
+        clearTimeout(el._t);
+        el._t = setTimeout(() => el.classList.remove('show'), 3500);
+    }
 }
+window.showToast = showToast;
 
 // ─── Modal Helpers ────────────────────────────────────────────
-function openModal(id) { document.getElementById(id).classList.add('show'); }
-function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+function openModal(id) { 
+    const el = document.getElementById(id);
+    if (el) el.classList.add('show'); 
+}
+function closeModal(id) { 
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('show'); 
+}
+window.openModal = openModal;
+window.closeModal = closeModal;
 
-document.querySelectorAll('.close-modal').forEach(btn => {
-    btn.addEventListener('click', () => closeModal(btn.dataset.modal));
+// Delegated close listener for any .close-modal buttons (static or dynamically added)
+document.addEventListener('click', e => {
+    const btn = e.target.closest('.close-modal');
+    if (btn && btn.dataset.modal) {
+        closeModal(btn.dataset.modal);
+    }
 });
+
 window.addEventListener('click', e => {
     document.querySelectorAll('.modal.show').forEach(m => {
         if (e.target === m && m.id !== 'modal-auth') m.classList.remove('show');
@@ -3702,14 +3719,19 @@ async function saveAntiSpam() {
 
 /* ============================================================
    AUTO-PROMO & MARKETING BOT — script.js Controller
+   Multi-Account Auto DM Marketing Engine + Shared Live Inbox
 ============================================================ */
 
 let _promoInitialized = false;
 let _promoCountdownInterval = null;
 let _promoTargetTime = 0;
 let _cachedPromoTokens = [];
+let _cachedPromoDmServers = [];
+let _cachedPromoInbox = [];
 let _cachedPromoTargets = [];
 let _cachedPromoTemplates = [];
+let _activePromoConvId = null;
+let _discoveredChannelsList = [];
 
 function escapeHtml(str) {
     if (!str || typeof str !== 'string') return '';
@@ -3738,7 +3760,7 @@ function startPromoCountdown(nextExecutionAt) {
         if (!timerEl) return;
         const diffSec = Math.ceil((_promoTargetTime - Date.now()) / 1000);
         if (diffSec <= 0) {
-            timerEl.textContent = 'Mengirim sekarang...';
+            timerEl.textContent = 'Memproses...';
             clearInterval(_promoCountdownInterval);
             setTimeout(loadPromoStatus, 3000);
         } else {
@@ -3755,15 +3777,25 @@ function initPromoOnce() {
     if (_promoInitialized) return;
     _promoInitialized = true;
 
-    // Subtab navigation
+    // Subtab navigation with robust ID matching
     document.querySelectorAll('.promo-tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             document.querySelectorAll('.promo-tab-btn').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.promo-tab-content').forEach(c => c.classList.remove('active'));
             btn.classList.add('active');
-            const target = btn.dataset.tab;
-            const content = document.getElementById(target);
-            if (content) content.classList.add('active');
+            const targetId = btn.dataset.tab;
+            let content = document.getElementById(targetId);
+            if (!content && !targetId.startsWith('tab-')) {
+                content = document.getElementById('tab-' + targetId);
+            }
+            if (content) {
+                content.classList.add('active');
+                if (targetId.includes('inbox')) {
+                    loadPromoInbox();
+                } else if (targetId.includes('dm-server')) {
+                    loadPromoDmServers();
+                }
+            }
         });
     });
 
@@ -3771,83 +3803,56 @@ function initPromoOnce() {
     document.getElementById('btn-promo-start')?.addEventListener('click', async () => {
         try {
             const res = await fetch('/api/promo/start', { method: 'POST' }).then(r => r.json());
-            showToast('🚀 Kampanye promosi berhasil dimulai!', 'success');
+            window.showToast?.('🚀 Kampanye promosi berhasil dimulai!', 'success');
             loadPromoStatus();
         } catch (err) {
-            showToast('Gagal memulai promosi: ' + err.message, 'error');
+            window.showToast?.('Gagal memulai promosi: ' + err.message, 'error');
         }
     });
 
     document.getElementById('btn-promo-pause')?.addEventListener('click', async () => {
         try {
             const res = await fetch('/api/promo/pause', { method: 'POST' }).then(r => r.json());
-            showToast('⏸️ Kampanye promosi dijeda.', 'warning');
+            window.showToast?.('⏸️ Kampanye promosi dijeda.', 'warning');
             loadPromoStatus();
         } catch (err) {
-            showToast('Gagal menjeda promosi: ' + err.message, 'error');
+            window.showToast?.('Gagal menjeda promosi: ' + err.message, 'error');
         }
     });
 
     document.getElementById('btn-promo-stop')?.addEventListener('click', async () => {
         try {
             const res = await fetch('/api/promo/stop', { method: 'POST' }).then(r => r.json());
-            showToast('⏹️ Kampanye promosi dihentikan.', 'info');
+            window.showToast?.('⏹️ Kampanye promosi dihentikan.', 'info');
             loadPromoStatus();
         } catch (err) {
-            showToast('Gagal menghentikan promosi: ' + err.message, 'error');
+            window.showToast?.('Gagal menghentikan promosi: ' + err.message, 'error');
         }
     });
 
     document.getElementById('btn-promo-refresh')?.addEventListener('click', () => {
         loadPromo();
-        showToast('Status promosi dimuat ulang', 'info');
+        window.showToast?.('Status promosi dimuat ulang', 'info');
     });
 
-    // Modal Triggers
+    // Modal Triggers - Akun Token
     document.getElementById('btn-promo-modal-token')?.addEventListener('click', () => {
-        document.getElementById('promo-input-token-val').value = '';
-        document.getElementById('promo-input-token-name').value = '';
-        openModal('modal-promo-add-token');
+        const tVal = document.getElementById('promo-input-token-val');
+        const tName = document.getElementById('promo-input-token-name');
+        if (tVal) tVal.value = '';
+        if (tName) tName.value = '';
+        window.openModal?.('modal-promo-add-token');
     });
 
-    document.getElementById('btn-promo-import-token')?.addEventListener('click', async () => {
-        try {
-            const res = await fetch('/api/promo/tokens/import', { method: 'POST' }).then(r => r.json());
-            if (res.success) {
-                showToast(`📥 ${res.added} akun token berhasil diimpor dari Mirror Bot! Total: ${res.total}`, 'success');
-                loadPromoTokens();
-                loadPromoStatus();
-            } else {
-                showToast('Gagal mengimpor token: ' + (res.error || 'Unknown'), 'error');
-            }
-        } catch (err) {
-            showToast('Gagal mengimpor: ' + err.message, 'error');
-        }
-    });
-
-    document.getElementById('btn-promo-modal-target')?.addEventListener('click', () => {
-        document.getElementById('promo-target-chid').value = '';
-        document.getElementById('promo-target-chname').value = '';
-        document.getElementById('promo-target-guildname').value = '';
-        document.getElementById('promo-target-notes').value = '';
-        openModal('modal-promo-add-target');
-    });
-
-    document.getElementById('btn-promo-modal-discover')?.addEventListener('click', () => {
-        openModal('modal-promo-discover');
-        runChannelDiscovery();
-    });
-
-    document.getElementById('btn-promo-test-open')?.addEventListener('click', () => {
-        populateTestSendModal();
-        openModal('modal-promo-test-send');
+    document.getElementById('btn-promo-import-token')?.addEventListener('click', () => {
+        importPromoTokens();
     });
 
     // Form Add Token
     document.getElementById('form-promo-add-token')?.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const token = document.getElementById('promo-input-token-val').value.trim();
-        const name = document.getElementById('promo-input-token-name').value.trim();
+        const token = document.getElementById('promo-input-token-val')?.value.trim();
+        const name = document.getElementById('promo-input-token-name')?.value.trim();
         if (!token) return;
 
         const btn = document.getElementById('btn-save-promo-token');
@@ -3861,15 +3866,15 @@ function initPromoOnce() {
             }).then(r => r.json());
 
             if (res.success) {
-                showToast(`Akun token berhasil ditambahkan! Menghubungkan...`, 'success');
-                closeModal('modal-promo-add-token');
+                window.showToast?.(`Akun token berhasil ditambahkan! Menghubungkan...`, 'success');
+                window.closeModal?.('modal-promo-add-token');
                 loadPromoTokens();
                 loadPromoStatus();
             } else {
-                showToast('Gagal: ' + (res.error || 'Token tidak valid'), 'error');
+                window.showToast?.('Gagal: ' + (res.error || 'Token tidak valid'), 'error');
             }
         } catch (err) {
-            showToast('Error: ' + err.message, 'error');
+            window.showToast?.('Error: ' + err.message, 'error');
         } finally {
             if (btn) btn.disabled = false;
         }
@@ -3882,17 +3887,42 @@ function initPromoOnce() {
         if (inp) {
             const isPwd = inp.type === 'password';
             inp.type = isPwd ? 'text' : 'password';
-            icon.className = isPwd ? 'bx bx-hide' : 'bx bx-show';
+            if (icon) icon.className = isPwd ? 'bx bx-hide' : 'bx bx-show';
         }
     });
 
-    // Form Add Target
+    // Modal Triggers - Target Server DM
+    document.getElementById('btn-promo-modal-dm-server')?.addEventListener('click', () => {
+        const sId = document.getElementById('promo-dm-server-input-id');
+        const sName = document.getElementById('promo-dm-server-input-name');
+        if (sId) sId.value = '';
+        if (sName) sName.value = '';
+        window.openModal?.('modal-promo-add-dm-server');
+    });
+
+    document.getElementById('btn-promo-scan-dm-servers')?.addEventListener('click', () => {
+        scanPromoDmServers();
+    });
+
+    // Form Add Target Channel
+    document.getElementById('btn-promo-modal-target')?.addEventListener('click', () => {
+        const chId = document.getElementById('promo-target-chid');
+        const chName = document.getElementById('promo-target-chname');
+        const guildName = document.getElementById('promo-target-guildname');
+        const notes = document.getElementById('promo-target-notes');
+        if (chId) chId.value = '';
+        if (chName) chName.value = '';
+        if (guildName) guildName.value = '';
+        if (notes) notes.value = '';
+        window.openModal?.('modal-promo-add-target');
+    });
+
     document.getElementById('form-promo-add-target')?.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const channelId = document.getElementById('promo-target-chid').value.trim();
-        const channelName = document.getElementById('promo-target-chname').value.trim();
-        const guildName = document.getElementById('promo-target-guildname').value.trim();
-        const notes = document.getElementById('promo-target-notes').value.trim();
+        const channelId = document.getElementById('promo-target-chid')?.value.trim();
+        const channelName = document.getElementById('promo-target-chname')?.value.trim();
+        const guildName = document.getElementById('promo-target-guildname')?.value.trim();
+        const notes = document.getElementById('promo-target-notes')?.value.trim();
 
         try {
             const res = await fetch('/api/promo/targets', {
@@ -3902,32 +3932,48 @@ function initPromoOnce() {
             }).then(r => r.json());
 
             if (res.success) {
-                showToast(`Target channel #${channelName || channelId} ditambahkan!`, 'success');
-                closeModal('modal-promo-add-target');
+                window.showToast?.(`Target channel #${channelName || channelId} ditambahkan!`, 'success');
+                window.closeModal?.('modal-promo-add-target');
                 loadPromoTargets();
                 loadPromoStatus();
             } else {
-                showToast('Gagal: ' + (res.error || 'Error'), 'error');
+                window.showToast?.('Gagal: ' + (res.error || 'Error'), 'error');
             }
         } catch (err) {
-            showToast('Error: ' + err.message, 'error');
+            window.showToast?.('Error: ' + err.message, 'error');
         }
     });
 
-    // Form Anti-Ban Settings
+    document.getElementById('btn-promo-modal-discover')?.addEventListener('click', () => {
+        window.openModal?.('modal-promo-discover');
+        runChannelDiscovery();
+    });
+
+    document.getElementById('btn-promo-test-open')?.addEventListener('click', () => {
+        populateTestSendModal();
+        window.openModal?.('modal-promo-test-send');
+    });
+
+    // Form Anti-Ban & Safeguard Settings
     document.getElementById('form-promo-settings')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const payload = {
-            delayMinSec: parseInt(document.getElementById('setting-delayMinSec').value) || 90,
-            delayMaxSec: parseInt(document.getElementById('setting-delayMaxSec').value) || 240,
-            rotationMode: document.getElementById('setting-rotationMode').value || 'round-robin',
-            hourlyLimitPerToken: parseInt(document.getElementById('setting-hourlyLimitPerToken').value) || 6,
-            dailyLimitPerToken: parseInt(document.getElementById('setting-dailyLimitPerToken').value) || 30,
-            channelCooldownMin: parseInt(document.getElementById('setting-channelCooldownMin').value) || 120,
-            simulateTyping: document.getElementById('setting-simulateTyping').checked,
-            workingHoursEnabled: document.getElementById('setting-workingHoursEnabled').checked,
-            workingHoursStart: parseInt(document.getElementById('setting-workingHoursStart').value) || 8,
-            workingHoursEnd: parseInt(document.getElementById('setting-workingHoursEnd').value) || 23,
+            campaignMode: document.getElementById('setting-campaignMode')?.value || 'DM_MEMBER',
+            dmBatchMinUsers: parseInt(document.getElementById('setting-dmBatchMinUsers')?.value) || 3,
+            dmBatchMaxUsers: parseInt(document.getElementById('setting-dmBatchMaxUsers')?.value) || 5,
+            dmDelayMinSec: parseInt(document.getElementById('setting-dmDelayMinSec')?.value) || 25,
+            dmDelayMaxSec: parseInt(document.getElementById('setting-dmDelayMaxSec')?.value) || 45,
+            dmAccountCooldownMin: parseInt(document.getElementById('setting-dmAccountCooldownMin')?.value) || 3,
+            dmAccountCooldownMax: parseInt(document.getElementById('setting-dmAccountCooldownMax')?.value) || 5,
+            hourlyLimitPerToken: parseInt(document.getElementById('setting-hourlyLimitPerToken')?.value) || 10,
+            dailyLimitPerToken: parseInt(document.getElementById('setting-dailyLimitPerToken')?.value) || 40,
+            simulateTyping: document.getElementById('setting-simulateTyping')?.checked !== false,
+            workingHoursEnabled: document.getElementById('setting-workingHoursEnabled')?.checked || false,
+            workingHoursStart: parseInt(document.getElementById('setting-workingHoursStart')?.value) || 8,
+            workingHoursEnd: parseInt(document.getElementById('setting-workingHoursEnd')?.value) || 23,
+            notifyOnServerCompleted: document.getElementById('setting-notifyOnServerCompleted')?.checked !== false,
+            notifyOnAccountLimit: document.getElementById('setting-notifyOnAccountLimit')?.checked !== false,
+            notifyOnIncomingDm: document.getElementById('setting-notifyOnIncomingDm')?.checked !== false
         };
 
         try {
@@ -3938,12 +3984,13 @@ function initPromoOnce() {
             }).then(r => r.json());
 
             if (res.success) {
-                showToast('🛡️ Pengaturan anti-ban & keamanan tersimpan!', 'success');
+                window.showToast?.('🛡️ Pengaturan anti-ban & strategi DM tersimpan!', 'success');
+                loadPromoStatus();
             } else {
-                showToast('Gagal menyimpan: ' + (res.error || 'Error'), 'error');
+                window.showToast?.('Gagal menyimpan: ' + (res.error || 'Error'), 'error');
             }
         } catch (err) {
-            showToast('Error: ' + err.message, 'error');
+            window.showToast?.('Error: ' + err.message, 'error');
         }
     });
 
@@ -3970,9 +4017,9 @@ function initPromoOnce() {
 
     // Spintax Tester Button
     document.getElementById('btn-promo-test-spintax')?.addEventListener('click', async () => {
-        const content = document.getElementById('promo-spintax-input').value;
+        const content = document.getElementById('promo-spintax-input')?.value;
         if (!content) {
-            showToast('Masukkan teks template terlebih dahulu!', 'warning');
+            window.showToast?.('Masukkan teks template terlebih dahulu!', 'warning');
             return;
         }
 
@@ -3980,34 +4027,36 @@ function initPromoOnce() {
             const res = await fetch('/api/promo/templates/preview', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content, meta: { guildName: 'VIP Crypto Hub', channelName: 'promo-member' } })
+                body: JSON.stringify({ content, meta: { guildName: 'VIP Crypto Hub', channelName: 'promo-member', username: 'Member_Cuan' } })
             }).then(r => r.json());
 
             if (res.success) {
-                document.getElementById('promo-spintax-output').textContent = res.preview;
-                document.getElementById('promo-preview-time').textContent = 'Hari ini pukul ' + new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+                const outEl = document.getElementById('promo-spintax-output');
+                const timeEl = document.getElementById('promo-preview-time');
+                if (outEl) outEl.textContent = res.preview;
+                if (timeEl) timeEl.textContent = 'Hari ini pukul ' + new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
             }
         } catch (err) {
-            showToast('Gagal preview: ' + err.message, 'error');
+            window.showToast?.('Gagal preview: ' + err.message, 'error');
         }
     });
 
     // Add New Template Button
     document.getElementById('btn-promo-new-template')?.addEventListener('click', () => {
-        const name = prompt('Masukkan Nama Template Promosi (contoh: Promo Kelas VIP Diskon):');
+        const name = prompt('Masukkan Nama Template Promosi (contoh: Promo Kelas VIP DM):');
         if (!name) return;
-        const defaultContent = "{Halo|Hai|Permisi} {semuanya|rekan-rekan}! 🔥\n\nIngin sinyal trading akurat 24/7? Join {Kelas VIP Mirror|VIP Trading Hub} kami sekarang!\n\nBenefit:\n- Mirror Discord & Telegram cepat\n- Edukasi & diskusi mentor\n\nInfo & join: https://t.me/yourlink\n{Salam cuan!|Good luck!}";
-        
+        const defaultContent = "{Halo|Hai|Permisi} kak {username|kawan}! 🔥\n\n{Mau dapat sinyal trading real-time tanpa delay?|Lagi cari akses sinyal VIP dengan akurasi tinggi?}\nJoin {Kelas VIP Mirror|VIP Signal Hub} kami sekarang!\n\n📌 Benefit:\n- Sinyal trading 24/7 real-time\n- Mirror Discord & Telegram cepat\n- Edukasi & analisis mentor\n\n👉 Info & join: https://t.me/yourlink_here\n{Salam profit!|Good luck!}";
+
         fetch('/api/promo/templates', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, content: defaultContent })
         }).then(r => r.json()).then(res => {
             if (res.success) {
-                showToast(`Template "${name}" berhasil dibuat!`, 'success');
+                window.showToast?.(`Template "${name}" berhasil dibuat!`, 'success');
                 loadPromoTemplates();
             } else {
-                showToast('Gagal: ' + (res.error || 'Error'), 'error');
+                window.showToast?.('Gagal: ' + (res.error || 'Error'), 'error');
             }
         });
     });
@@ -4015,9 +4064,9 @@ function initPromoOnce() {
     // Test Send Form Submit
     document.getElementById('form-promo-test-send')?.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const tokenId = document.getElementById('promo-test-token-select').value;
-        const channelId = document.getElementById('promo-test-target-select').value;
-        const templateId = document.getElementById('promo-test-template-select').value;
+        const tokenId = document.getElementById('promo-test-token-select')?.value;
+        const channelId = document.getElementById('promo-test-target-select')?.value;
+        const templateId = document.getElementById('promo-test-template-select')?.value;
 
         const btn = document.getElementById('btn-submit-test-promo');
         if (btn) {
@@ -4033,15 +4082,15 @@ function initPromoOnce() {
             }).then(r => r.json());
 
             if (res.success) {
-                showToast(`✅ Pesan tes terkirim ke #${res.channelName} (${res.guildName}) via ${res.account}!`, 'success');
-                closeModal('modal-promo-test-send');
+                window.showToast?.(`✅ Pesan tes terkirim ke #${res.channelName} (${res.guildName}) via ${res.account}!`, 'success');
+                window.closeModal?.('modal-promo-test-send');
                 loadPromoStatus();
                 loadPromoLogs();
             } else {
-                showToast('Gagal kirim tes: ' + (res.error || 'Error'), 'error');
+                window.showToast?.('Gagal kirim tes: ' + (res.error || 'Error'), 'error');
             }
         } catch (err) {
-            showToast('Error: ' + err.message, 'error');
+            window.showToast?.('Error: ' + err.message, 'error');
         } finally {
             if (btn) {
                 btn.disabled = false;
@@ -4055,7 +4104,7 @@ function initPromoOnce() {
         if (!confirm('Bersihkan semua riwayat log promosi?')) return;
         try {
             await fetch('/api/promo/logs/clear', { method: 'POST' });
-            showToast('Riwayat log dibersihkan', 'info');
+            window.showToast?.('Riwayat log dibersihkan', 'info');
             loadPromoLogs();
         } catch (_) {}
     });
@@ -4071,6 +4120,8 @@ async function loadPromo() {
     await Promise.all([
         loadPromoStatus(),
         loadPromoTokens(),
+        loadPromoDmServers(),
+        loadPromoInbox(),
         loadPromoTargets(),
         loadPromoTemplates(),
         loadPromoSettings(),
@@ -4081,13 +4132,12 @@ async function loadPromo() {
 async function loadPromoStatus() {
     try {
         const data = await fetch('/api/promo/status').then(r => r.json());
-        
+
         // Update Pill Badge
         const pill = document.getElementById('promo-status-pill');
-        const text = document.getElementById('promo-status-text');
         const badge = document.getElementById('promo-status-badge');
         const statStatus = document.getElementById('promo-stat-status');
-        
+
         const isRunning = data.status === 'RUNNING';
         const isPaused = data.status === 'PAUSED';
 
@@ -4108,21 +4158,42 @@ async function loadPromoStatus() {
             statStatus.style.color = isRunning ? '#10b981' : (isPaused ? '#f59e0b' : '#ef4444');
         }
 
-        document.getElementById('promo-stat-tokens').textContent = `${data.activeTokens} / ${data.totalTokens}`;
-        document.getElementById('promo-stat-tokens-sub').innerHTML = `<i class='bx bx-check-circle'></i> ${data.activeTokens} akun online & siap`;
-        
-        document.getElementById('promo-stat-targets').textContent = data.activeTargets;
-        document.getElementById('promo-stat-targets-sub').innerHTML = `<i class='bx bx-target-lock'></i> ${data.activeTargets} dari ${data.totalTargets} aktif`;
+        const modeEl = document.getElementById('promo-stat-mode');
+        if (modeEl) {
+            const isDmMode = data.settings?.campaignMode === 'DM' || data.settings?.campaignMode === 'DM_MEMBER';
+            modeEl.innerHTML = isDmMode
+                ? `<i class='bx bx-user-voice'></i> Auto DM (3-5 users/batch)`
+                : `<i class='bx bx-broadcast'></i> Channel Post Mode`;
+        }
 
-        document.getElementById('promo-stat-sent').textContent = data.stats.totalSent || 0;
-        document.getElementById('promo-stat-rate').innerHTML = `<i class='bx bx-check-double'></i> Hari ini: ${data.stats.todaySent || 0} pesan`;
+        // Stats: Akun Token
+        const tokensEl = document.getElementById('promo-stat-tokens');
+        if (tokensEl) tokensEl.textContent = `${data.activeTokens} / ${data.totalTokens}`;
+        const tokensSub = document.getElementById('promo-stat-tokens-sub');
+        if (tokensSub) tokensSub.innerHTML = `<i class='bx bx-check-circle'></i> ${data.activeTokens} akun online & siap`;
 
-        document.getElementById('promo-next-account').textContent = data.currentAccountTag || '-';
-        document.getElementById('promo-next-target').textContent = data.currentTargetName || '-';
+        // Stats: Target Server DM
+        const serversEl = document.getElementById('promo-stat-servers');
+        if (serversEl) serversEl.textContent = data.activeDmServers ?? data.activeTargets ?? 0;
+        const serversSub = document.getElementById('promo-stat-servers-sub');
+        if (serversSub) serversSub.innerHTML = `<i class='bx bx-bullseye'></i> ${data.activeDmServers ?? 0} dari ${data.totalDmServers ?? 0} server aktif`;
+
+        // Stats: Pesan Terkirim
+        const sentEl = document.getElementById('promo-stat-sent');
+        if (sentEl) sentEl.textContent = data.stats.totalSent || 0;
+        const rateEl = document.getElementById('promo-stat-rate');
+        if (rateEl) rateEl.innerHTML = `<i class='bx bx-check-double'></i> Hari ini: ${data.stats.todaySent || 0} DM`;
+
+        const nextAcc = document.getElementById('promo-next-account');
+        if (nextAcc) nextAcc.textContent = data.currentAccountTag || '-';
+        const nextTarget = document.getElementById('promo-next-target');
+        if (nextTarget) nextTarget.textContent = data.currentTargetName || '-';
 
         startPromoCountdown(data.nextExecutionAt);
     } catch (_) {}
 }
+
+// ─── Akun Token Pool ──────────────────────────────────────────
 
 async function loadPromoTokens() {
     try {
@@ -4139,7 +4210,7 @@ async function loadPromoTokens() {
                     <i class='bx bx-key' style="font-size:2.4rem; color:var(--text-secondary); margin-bottom:8px; display:block;"></i>
                     <div style="font-weight:600; margin-bottom:4px;">Belum Ada Akun Token Promo</div>
                     <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:14px;">Tambahkan akun token Discord Anda atau import langsung dari token mirror yang sudah berjalan.</p>
-                    <button class="btn-primary" onclick="document.getElementById('btn-promo-modal-token')?.click()">
+                    <button class="btn-primary" onclick="window.openModal('modal-promo-add-token')">
                         <i class='bx bx-plus'></i> Tambah Token Sekarang
                     </button>
                 </div>
@@ -4149,15 +4220,15 @@ async function loadPromoTokens() {
 
         container.innerHTML = _cachedPromoTokens.map(t => {
             const isReady = t.status === 'READY';
-            const isError = t.status === 'ERROR' || t.status === 'INVALID_TOKEN';
-            const isRateLimited = t.status === 'RATE_LIMITED';
+            const isError = t.status === 'ERROR' || t.status === 'INVALID_TOKEN' || t.status === 'BANNED';
+            const isRateLimited = t.status === 'RATE_LIMITED' || t.status === 'COOLDOWN';
 
             let statusColor = '#94a3b8';
             if (isReady) statusColor = '#10b981';
             else if (isRateLimited) statusColor = '#f59e0b';
             else if (isError) statusColor = '#ef4444';
 
-            const hourlyLimit = 8;
+            const hourlyLimit = 10;
             const dailyLimit = 40;
             const hourlyPct = Math.min(Math.round(((t.hourlyCount || 0) / hourlyLimit) * 100), 100);
             const dailyPct = Math.min(Math.round(((t.dailyCount || 0) / dailyLimit) * 100), 100);
@@ -4199,11 +4270,11 @@ async function loadPromoTokens() {
 
                     <div style="display:flex; justify-content:space-between; align-items:center; padding-top:6px; border-top:1px solid var(--border-color);">
                         <label class="switch" style="transform:scale(0.85);" title="Aktifkan/Nonaktifkan akun">
-                            <input type="checkbox" ${t.enabled ? 'checked' : ''} onchange="togglePromoToken('${t.id}', this.checked)">
+                            <input type="checkbox" ${t.enabled ? 'checked' : ''} onchange="window.togglePromoToken('${t.id}', this.checked)">
                             <span class="slider round"></span>
                         </label>
                         <div style="display:flex; gap:6px;">
-                            <button class="btn-danger-soft" style="padding:4px 8px; font-size:0.78rem;" onclick="deletePromoToken('${t.id}', '${escapeHtml(t.tag || t.name)}')">
+                            <button class="btn-danger-soft" style="padding:4px 8px; font-size:0.78rem;" onclick="window.deletePromoToken('${t.id}', '${escapeHtml(t.tag || t.name)}')">
                                 <i class='bx bx-trash'></i> Hapus
                             </button>
                         </div>
@@ -4221,10 +4292,10 @@ async function togglePromoToken(id, enabled) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ enabled })
         });
-        showToast(`Status akun diperbarui`, 'info');
+        window.showToast?.(`Status akun diperbarui`, 'info');
         loadPromoStatus();
     } catch (err) {
-        showToast('Error: ' + err.message, 'error');
+        window.showToast?.('Error: ' + err.message, 'error');
     }
 }
 
@@ -4232,13 +4303,549 @@ async function deletePromoToken(id, tag) {
     if (!confirm(`Hapus token "${tag}" dari pool marketing?`)) return;
     try {
         await fetch(`/api/promo/tokens/${id}`, { method: 'DELETE' });
-        showToast('Akun token dihapus', 'warning');
+        window.showToast?.('Akun token dihapus', 'warning');
         loadPromoTokens();
         loadPromoStatus();
     } catch (err) {
-        showToast('Error: ' + err.message, 'error');
+        window.showToast?.('Error: ' + err.message, 'error');
     }
 }
+
+async function importPromoTokens() {
+    try {
+        const res = await fetch('/api/promo/tokens/import', { method: 'POST' }).then(r => r.json());
+        if (res.success) {
+            window.showToast?.(`📥 ${res.added} akun token berhasil diimpor dari Mirror Bot! Total: ${res.total}`, 'success');
+            loadPromoTokens();
+            loadPromoStatus();
+        } else {
+            window.showToast?.('Gagal mengimpor token: ' + (res.error || 'Unknown'), 'error');
+        }
+    } catch (err) {
+        window.showToast?.('Gagal mengimpor: ' + err.message, 'error');
+    }
+}
+
+// ─── Target Server Discord (Auto DM Member) ───────────────────
+
+async function loadPromoDmServers() {
+    try {
+        const servers = await fetch('/api/promo/dm-servers').then(r => r.json());
+        _cachedPromoDmServers = servers || [];
+        const container = document.getElementById('promo-dm-servers-container');
+        const badgeCount = document.getElementById('badge-promo-dm-servers');
+        if (badgeCount) badgeCount.textContent = _cachedPromoDmServers.length;
+
+        if (!container) return;
+        if (!_cachedPromoDmServers.length) {
+            container.innerHTML = `
+                <div style="grid-column: 1/-1; text-align:center; padding:36px; background:rgba(255,255,255,0.02); border:1px dashed var(--border-color); border-radius:12px;">
+                    <i class='bx bx-bullseye' style="font-size:2.4rem; color:#38bdf8; margin-bottom:8px; display:block;"></i>
+                    <div style="font-weight:600; margin-bottom:4px;">Belum Ada Target Server DM</div>
+                    <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:14px;">Tambahkan server Discord yang ingin Anda promosikan secara langsung ke DM para anggotanya.</p>
+                    <div style="display:flex; justify-content:center; gap:10px;">
+                        <button class="btn-ghost" onclick="window.scanPromoDmServers()">
+                            <i class='bx bx-radar'></i> Pindai dari Akun (Scan)
+                        </button>
+                        <button class="btn-primary" onclick="window.openModal('modal-promo-add-dm-server')">
+                            <i class='bx bx-plus'></i> Tambah Server Manual
+                        </button>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = _cachedPromoDmServers.map(s => {
+            const isCompleted = s.status === 'COMPLETED';
+            const isRunning = s.status === 'RUNNING';
+            const isScraping = s.status === 'SCRAPING';
+
+            let statusBg = 'rgba(148,163,184,0.15)';
+            let statusColor = '#94a3b8';
+            if (isCompleted) { statusBg = 'rgba(16,185,129,0.15)'; statusColor = '#10b981'; }
+            else if (isRunning) { statusBg = 'rgba(56,189,248,0.15)'; statusColor = '#38bdf8'; }
+            else if (isScraping) { statusBg = 'rgba(245,158,11,0.15)'; statusColor = '#f59e0b'; }
+
+            const total = s.memberCount || 0;
+            const sent = s.dmSentCount || 0;
+            const skipped = s.skippedCount || 0;
+            const queue = s.queueCount ?? (total - sent - skipped > 0 ? total - sent - skipped : 0);
+            const progressPct = total > 0 ? Math.min(100, Math.round(((sent + skipped) / total) * 100)) : 0;
+
+            return `
+                <div class="promo-server-card">
+                    <div class="promo-server-header">
+                        <div>
+                            <div class="promo-server-name" title="${escapeHtml(s.guildName)}">
+                                <i class='bx bxl-discord' style="color:#5865F2;"></i> ${escapeHtml(s.guildName)}
+                            </div>
+                            <div class="promo-server-sub">Guild ID: <code>${escapeHtml(s.guildId)}</code></div>
+                        </div>
+                        <span class="badge" style="background:${statusBg}; color:${statusColor}; border:1px solid ${statusColor}44; font-size:0.75rem;">
+                            ${isScraping ? "<i class='bx bx-loader-alt bx-spin'></i> SCRAPING" : s.status}
+                        </span>
+                    </div>
+
+                    <div style="margin: 12px 0 6px;">
+                        <div style="display:flex; justify-content:space-between; font-size:0.78rem; color:var(--text-secondary); margin-bottom:4px;">
+                            <span>Progress DM Member</span>
+                            <b>${progressPct}% (${sent + skipped}/${total})</b>
+                        </div>
+                        <div class="promo-progress-bar">
+                            <div class="promo-progress-fill" style="width: ${progressPct}%;"></div>
+                        </div>
+                    </div>
+
+                    <div class="promo-server-metrics">
+                        <div class="promo-metric-item">
+                            <div class="promo-metric-val">${total}</div>
+                            <div class="promo-metric-label">Total Member</div>
+                        </div>
+                        <div class="promo-metric-item">
+                            <div class="promo-metric-val" style="color:#f59e0b;">${queue}</div>
+                            <div class="promo-metric-label">Sisa Antrean</div>
+                        </div>
+                        <div class="promo-metric-item">
+                            <div class="promo-metric-val" style="color:#10b981;">${sent}</div>
+                            <div class="promo-metric-label">DM Terkirim</div>
+                        </div>
+                        <div class="promo-metric-item">
+                            <div class="promo-metric-val" style="color:#94a3b8;">${skipped}</div>
+                            <div class="promo-metric-label">DM Tertutup</div>
+                        </div>
+                    </div>
+
+                    <div class="promo-server-footer">
+                        <label class="switch" style="transform:scale(0.85);" title="Aktifkan target server ini">
+                            <input type="checkbox" ${s.enabled ? 'checked' : ''} onchange="window.togglePromoDmServer('${s.id}', this.checked)">
+                            <span class="slider round"></span>
+                        </label>
+                        <div style="display:flex; gap:6px;">
+                            <button class="btn-ghost" style="padding:4px 10px; font-size:0.78rem;" title="Perbarui daftar member dari server" onclick="window.scrapePromoDmServer('${s.id}')">
+                                <i class='bx bx-refresh'></i> Scrape
+                            </button>
+                            <button class="btn-danger-soft" style="padding:4px 8px; font-size:0.78rem;" onclick="window.deletePromoDmServer('${s.id}', '${escapeHtml(s.guildName)}')">
+                                <i class='bx bx-trash'></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (_) {}
+}
+
+async function savePromoDmServer(e) {
+    if (e) e.preventDefault();
+    const guildId = document.getElementById('promo-dm-server-input-id')?.value.trim();
+    const guildName = document.getElementById('promo-dm-server-input-name')?.value.trim();
+
+    if (!guildId) {
+        window.showToast?.('Guild / Server ID harus diisi!', 'warning');
+        return;
+    }
+
+    const btn = document.getElementById('btn-save-promo-dm-server');
+    if (btn) btn.disabled = true;
+
+    try {
+        const res = await fetch('/api/promo/dm-servers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ guildId, guildName })
+        }).then(r => r.json());
+
+        if (res.success) {
+            window.showToast?.(`✅ Server ${res.server?.guildName || guildId} berhasil ditambahkan! Memulai scraping member...`, 'success');
+            window.closeModal?.('modal-promo-add-dm-server');
+            loadPromoDmServers();
+            loadPromoStatus();
+        } else {
+            window.showToast?.('Gagal: ' + (res.error || 'Server tidak dapat diakses token'), 'error');
+        }
+    } catch (err) {
+        window.showToast?.('Error: ' + err.message, 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+async function deletePromoDmServer(serverId, guildName) {
+    if (!confirm(`Hapus server "${guildName || serverId}" dari daftar target promosi DM?`)) return;
+    try {
+        await fetch(`/api/promo/dm-servers/${serverId}`, { method: 'DELETE' });
+        window.showToast?.('Server target dihapus', 'warning');
+        loadPromoDmServers();
+        loadPromoStatus();
+    } catch (err) {
+        window.showToast?.('Error: ' + err.message, 'error');
+    }
+}
+
+async function togglePromoDmServer(serverId, enabled) {
+    try {
+        await fetch(`/api/promo/dm-servers/${serverId}/toggle`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled })
+        });
+        window.showToast?.('Status target server diperbarui', 'info');
+        loadPromoStatus();
+    } catch (err) {
+        window.showToast?.('Error: ' + err.message, 'error');
+    }
+}
+
+async function scrapePromoDmServer(serverId) {
+    window.showToast?.('🔍 Memulai scraping member dari server...', 'info');
+    try {
+        const res = await fetch(`/api/promo/dm-servers/${serverId}/scrape`, { method: 'POST' }).then(r => r.json());
+        if (res.success) {
+            window.showToast?.(`✅ Berhasil mengambil ${res.memberCount} member! Siap di-DM.`, 'success');
+            loadPromoDmServers();
+            loadPromoStatus();
+        } else {
+            window.showToast?.('Gagal scrape: ' + (res.error || 'Unknown error'), 'error');
+        }
+    } catch (err) {
+        window.showToast?.('Error: ' + err.message, 'error');
+    }
+}
+
+async function scanPromoDmServers() {
+    window.openModal?.('modal-promo-scan-dm-servers');
+    const container = document.getElementById('promo-scan-dm-servers-list');
+    if (container) {
+        container.innerHTML = `
+            <div style="text-align:center; padding:36px; color:var(--text-secondary);">
+                <i class='bx bx-loader-alt bx-spin' style="font-size:2rem; color:#38bdf8; display:block; margin-bottom:10px;"></i>
+                Memindai seluruh server yang telah dimasuki akun token promo...
+            </div>
+        `;
+    }
+
+    try {
+        const res = await fetch('/api/promo/dm-servers/scan', { method: 'POST' }).then(r => r.json());
+        if (res.success && Array.isArray(res.guilds)) {
+            if (!res.guilds.length) {
+                if (container) {
+                    container.innerHTML = `
+                        <div style="text-align:center; padding:30px; color:var(--text-secondary);">
+                            Tidak ada server ditemukan. Pastikan akun token promo Anda sudah join ke server target.
+                        </div>
+                    `;
+                }
+                return;
+            }
+
+            if (container) {
+                container.innerHTML = res.guilds.map(g => {
+                    const iconUrl = g.icon
+                        ? `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=64`
+                        : `https://ui-avatars.com/api/?name=${encodeURIComponent(g.name)}&background=1e293b&color=38bdf8`;
+
+                    const btnHtml = g.alreadyAdded
+                        ? `<button class="btn-ghost" disabled style="padding:6px 12px; font-size:0.8rem; color:#94a3b8;"><i class='bx bx-check'></i> Sudah Ada</button>`
+                        : `<button class="btn-primary" style="padding:6px 14px; font-size:0.8rem;" onclick="window.addPromoDmServerFromScan('${g.id}', '${escapeHtml(g.name)}', ${g.approximate_member_count || 0})"><i class='bx bx-plus'></i> Tambahkan</button>`;
+
+                    return `
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:10px;">
+                            <div style="display:flex; align-items:center; gap:12px;">
+                                <img src="${iconUrl}" style="width:38px; height:38px; border-radius:10px; object-fit:cover;" onerror="this.src='https://ui-avatars.com/api/?name=DC&background=334155&color=fff'">
+                                <div>
+                                    <div style="font-weight:700; font-size:0.92rem;">${escapeHtml(g.name)}</div>
+                                    <div style="font-size:0.75rem; color:var(--text-secondary);">ID: <code>${g.id}</code> ${g.approximate_member_count ? `• ~${g.approximate_member_count} member` : ''}</div>
+                                </div>
+                            </div>
+                            <div>${btnHtml}</div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        } else {
+            if (container) {
+                container.innerHTML = `<div style="text-align:center; padding:30px; color:#ef4444;">Gagal memindai: ${res.error || 'Unknown'}</div>`;
+            }
+        }
+    } catch (err) {
+        if (container) {
+            container.innerHTML = `<div style="text-align:center; padding:30px; color:#ef4444;">Error: ${err.message}</div>`;
+        }
+    }
+}
+
+async function addPromoDmServerFromScan(guildId, guildName, memberCount) {
+    try {
+        const res = await fetch('/api/promo/dm-servers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ guildId, guildName, memberCount })
+        }).then(r => r.json());
+
+        if (res.success) {
+            window.showToast?.(`✅ Server "${guildName}" ditambahkan ke antrean DM!`, 'success');
+            loadPromoDmServers();
+            loadPromoStatus();
+            scanPromoDmServers(); // Refresh scan list
+        } else {
+            window.showToast?.('Gagal: ' + (res.error || 'Error'), 'error');
+        }
+    } catch (err) {
+        window.showToast?.('Error: ' + err.message, 'error');
+    }
+}
+
+// ─── Shared Live DM Inbox Hub ─────────────────────────────────
+
+async function loadPromoInbox() {
+    try {
+        const inbox = await fetch('/api/promo/inbox').then(r => r.json());
+        const convs = Object.values(inbox.conversations || {});
+        // Urutkan dari percakapan terbaru
+        convs.sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0));
+        _cachedPromoInbox = convs;
+
+        // Hitung total unread
+        const totalUnread = convs.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
+        const badgeEl = document.getElementById('badge-promo-inbox');
+        if (badgeEl) {
+            badgeEl.textContent = totalUnread;
+            badgeEl.style.display = totalUnread > 0 ? 'inline-block' : 'none';
+        }
+
+        renderPromoInboxList();
+
+        // Refresh thread aktif jika sedang dibuka
+        if (_activePromoConvId) {
+            const activeConv = _cachedPromoInbox.find(c => c.id === _activePromoConvId);
+            if (activeConv) {
+                renderPromoChatMessages(activeConv.messages || []);
+            }
+        }
+    } catch (_) {}
+}
+
+function renderPromoInboxList(filterText = '') {
+    const container = document.getElementById('promo-inbox-list');
+    if (!container) return;
+
+    let list = _cachedPromoInbox;
+    if (filterText && filterText.trim()) {
+        const q = filterText.toLowerCase();
+        list = list.filter(c =>
+            (c.userName && c.userName.toLowerCase().includes(q)) ||
+            (c.accountTag && c.accountTag.toLowerCase().includes(q)) ||
+            (c.userId && c.userId.includes(q))
+        );
+    }
+
+    if (!list.length) {
+        container.innerHTML = `
+            <div style="text-align:center; padding:40px 16px; color:var(--text-secondary); font-size:0.85rem;">
+                <i class='bx bx-message-square-dots' style="font-size:2rem; display:block; margin-bottom:8px; opacity:0.5;"></i>
+                ${filterText ? 'Tidak ada hasil percakapan' : 'Belum ada obrolan DM masuk'}
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = list.map(c => {
+        const isActive = c.id === _activePromoConvId ? 'active' : '';
+        const unreadBadge = (c.unreadCount || 0) > 0
+            ? `<span class="promo-conv-unread">${c.unreadCount}</span>`
+            : '';
+
+        const timeStr = c.lastMessageAt ? new Date(c.lastMessageAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '';
+        const avatarSrc = c.userAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.userName || 'User')}&background=0ea5e9&color=fff`;
+
+        return `
+            <div class="promo-conv-item ${isActive}" onclick="window.selectPromoConversation('${c.id}')">
+                <img src="${avatarSrc}" class="promo-conv-avatar" onerror="this.src='https://ui-avatars.com/api/?name=User&background=334155&color=fff'">
+                <div class="promo-conv-info">
+                    <div class="promo-conv-top">
+                        <span class="promo-conv-name" title="${escapeHtml(c.userName)}">${escapeHtml(c.userName || 'Discord Member')}</span>
+                        <span class="promo-conv-time">${timeStr}</span>
+                    </div>
+                    <div style="margin-bottom:2px;">
+                        <span class="promo-conv-via-badge">via ${escapeHtml(c.accountTag || 'Akun Promo')}</span>
+                    </div>
+                    <div class="promo-conv-preview" title="${escapeHtml(c.lastMessage || '')}">${escapeHtml(c.lastMessage || '-')}</div>
+                </div>
+                ${unreadBadge}
+            </div>
+        `;
+    }).join('');
+}
+
+function filterPromoInbox(query) {
+    renderPromoInboxList(query);
+}
+
+async function selectPromoConversation(convId) {
+    _activePromoConvId = convId;
+    renderPromoInboxList(); // Update active highlight
+
+    try {
+        const conv = await fetch(`/api/promo/inbox/${convId}`).then(r => r.json());
+        if (!conv || conv.error) {
+            window.showToast?.('Gagal memuat percakapan', 'error');
+            return;
+        }
+
+        const emptyView = document.getElementById('promo-chat-main-empty');
+        const activeView = document.getElementById('promo-chat-main-active');
+        if (emptyView) emptyView.style.display = 'none';
+        if (activeView) activeView.style.display = 'flex';
+
+        // Header info
+        const nameEl = document.getElementById('promo-chat-header-name');
+        const idEl = document.getElementById('promo-chat-header-id');
+        const viaEl = document.getElementById('promo-chat-header-via');
+        const avatarEl = document.getElementById('promo-chat-header-avatar');
+
+        if (nameEl) nameEl.textContent = conv.userName || 'Discord User';
+        if (idEl) idEl.textContent = `User ID: ${conv.userId}`;
+        if (viaEl) viaEl.textContent = `via ${conv.accountTag || 'Akun Promo'}`;
+        if (avatarEl) {
+            avatarEl.src = conv.userAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(conv.userName || 'User')}&background=0ea5e9&color=fff`;
+        }
+
+        renderPromoChatMessages(conv.messages || []);
+
+        // Focus reply textarea
+        const replyInp = document.getElementById('promo-reply-input');
+        if (replyInp) {
+            replyInp.focus();
+        }
+
+        // Tandai dibaca jika sebelumnya ada unread
+        if ((conv.unreadCount || 0) > 0) {
+            markPromoActiveChatRead(false);
+        }
+    } catch (err) {
+        window.showToast?.('Error memuat obrolan: ' + err.message, 'error');
+    }
+}
+
+function renderPromoChatMessages(messages) {
+    const container = document.getElementById('promo-chat-messages');
+    if (!container) return;
+
+    if (!messages || !messages.length) {
+        container.innerHTML = `
+            <div style="text-align:center; padding:30px; color:var(--text-secondary); font-size:0.85rem;">
+                Belum ada pesan dalam percakapan ini
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = messages.map(m => {
+        const isOut = m.direction === 'outgoing';
+        const bubbleClass = isOut ? 'outgoing' : 'incoming';
+        const senderTag = isOut ? `(Admin via ${escapeHtml(m.senderTag || 'Bot')})` : escapeHtml(m.authorName || 'Member');
+        const timeStr = m.timestamp ? new Date(m.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '';
+
+        return `
+            <div class="chat-msg-bubble ${bubbleClass}">
+                <div class="chat-msg-sender">${senderTag}</div>
+                <div class="chat-msg-text">${escapeHtml(m.content)}</div>
+                <div class="chat-msg-time">${timeStr}</div>
+            </div>
+        `;
+    }).join('');
+
+    // Auto scroll ke paling bawah
+    container.scrollTop = container.scrollHeight;
+}
+
+async function sendPromoDmReply(e) {
+    if (e) e.preventDefault();
+    if (!_activePromoConvId) {
+        window.showToast?.('Pilih percakapan terlebih dahulu!', 'warning');
+        return;
+    }
+
+    const input = document.getElementById('promo-reply-input');
+    const content = input?.value.trim();
+    if (!content) return;
+
+    const btn = document.getElementById('btn-promo-send-reply');
+    if (btn) btn.disabled = true;
+
+    try {
+        const res = await fetch(`/api/promo/inbox/${_activePromoConvId}/reply`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content })
+        }).then(r => r.json());
+
+        if (res.success) {
+            if (input) input.value = '';
+            window.showToast?.('Pesan balasan terkirim ke member!', 'success');
+
+            // Tambahkan bubble langsung secara optimistik
+            const container = document.getElementById('promo-chat-messages');
+            if (container) {
+                const bubble = document.createElement('div');
+                bubble.className = 'chat-msg-bubble outgoing';
+                bubble.innerHTML = `
+                    <div class="chat-msg-sender">(Admin via ${escapeHtml(res.sentVia || 'Bot')})</div>
+                    <div class="chat-msg-text">${escapeHtml(content)}</div>
+                    <div class="chat-msg-time">${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
+                `;
+                container.appendChild(bubble);
+                container.scrollTop = container.scrollHeight;
+            }
+
+            loadPromoInbox();
+        } else {
+            window.showToast?.('Gagal membalas pesan: ' + (res.error || 'Error'), 'error');
+        }
+    } catch (err) {
+        window.showToast?.('Error: ' + err.message, 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+        if (input) input.focus();
+    }
+}
+
+async function markPromoActiveChatRead(showNotify = true) {
+    if (!_activePromoConvId) return;
+    try {
+        await fetch(`/api/promo/inbox/${_activePromoConvId}/mark-read`, { method: 'POST' });
+        if (showNotify) window.showToast?.('Percakapan ditandai sudah dibaca', 'info');
+        loadPromoInbox();
+    } catch (_) {}
+}
+
+async function deletePromoActiveChat() {
+    if (!_activePromoConvId) return;
+    if (!confirm('Hapus riwayat percakapan ini dari Inbox?')) return;
+
+    try {
+        await fetch(`/api/promo/inbox/${_activePromoConvId}`, { method: 'DELETE' });
+        window.showToast?.('Percakapan dihapus', 'info');
+        _activePromoConvId = null;
+
+        const emptyView = document.getElementById('promo-chat-main-empty');
+        const activeView = document.getElementById('promo-chat-main-active');
+        if (emptyView) emptyView.style.display = 'flex';
+        if (activeView) activeView.style.display = 'none';
+
+        loadPromoInbox();
+    } catch (err) {
+        window.showToast?.('Error: ' + err.message, 'error');
+    }
+}
+
+function refreshPromoInbox() {
+    loadPromoInbox();
+    window.showToast?.('Inbox DM dimuat ulang', 'info');
+}
+
+// ─── Target Channel & Spintax ─────────────────────────────────
 
 async function loadPromoTargets() {
     try {
@@ -4276,12 +4883,12 @@ async function loadPromoTargets() {
                     <td><b>${t.totalSent || 0}</b> pesan</td>
                     <td>
                         <label class="switch" style="transform:scale(0.85);">
-                            <input type="checkbox" ${t.enabled ? 'checked' : ''} onchange="togglePromoTarget('${t.id}', this.checked)">
+                            <input type="checkbox" ${t.enabled ? 'checked' : ''} onchange="window.togglePromoTarget('${t.id}', this.checked)">
                             <span class="slider round"></span>
                         </label>
                     </td>
                     <td>
-                        <button class="btn-danger-soft" style="padding:4px 8px; font-size:0.75rem;" onclick="deletePromoTarget('${t.id}', '${escapeHtml(t.channelName || t.channelId)}')">
+                        <button class="btn-danger-soft" style="padding:4px 8px; font-size:0.75rem;" onclick="window.deletePromoTarget('${t.id}', '${escapeHtml(t.channelName || t.channelId)}')">
                             <i class='bx bx-trash'></i>
                         </button>
                     </td>
@@ -4298,10 +4905,10 @@ async function togglePromoTarget(id, enabled) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ enabled })
         });
-        showToast('Status target channel diperbarui', 'info');
+        window.showToast?.('Status target channel diperbarui', 'info');
         loadPromoStatus();
     } catch (err) {
-        showToast('Error: ' + err.message, 'error');
+        window.showToast?.('Error: ' + err.message, 'error');
     }
 }
 
@@ -4309,11 +4916,11 @@ async function deletePromoTarget(id, name) {
     if (!confirm(`Hapus target channel #${name}?`)) return;
     try {
         await fetch(`/api/promo/targets/${id}`, { method: 'DELETE' });
-        showToast('Target channel dihapus', 'warning');
+        window.showToast?.('Target channel dihapus', 'warning');
         loadPromoTargets();
         loadPromoStatus();
     } catch (err) {
-        showToast('Error: ' + err.message, 'error');
+        window.showToast?.('Error: ' + err.message, 'error');
     }
 }
 
@@ -4331,7 +4938,6 @@ async function loadPromoTemplates() {
             return;
         }
 
-        // Isi textarea simulator dengan template pertama jika masih kosong
         const inputSpintax = document.getElementById('promo-spintax-input');
         if (inputSpintax && !inputSpintax.value && _cachedPromoTemplates[0]) {
             inputSpintax.value = _cachedPromoTemplates[0].content;
@@ -4348,10 +4954,10 @@ async function loadPromoTemplates() {
                             <span class="badge" style="background:rgba(168,85,247,0.15); color:#c084fc; font-size:0.75rem;">
                                 Dipakai: ${tpl.useCount || 0}x
                             </span>
-                            <button class="btn-icon" style="width:28px; height:28px; font-size:0.85rem;" title="Muat ke Simulator" onclick="loadTemplateToSimulator('${tpl.id}')">
+                            <button class="btn-icon" style="width:28px; height:28px; font-size:0.85rem;" title="Muat ke Simulator" onclick="window.loadTemplateToSimulator('${tpl.id}')">
                                 <i class='bx bx-edit-alt'></i>
                             </button>
-                            <button class="btn-icon" style="width:28px; height:28px; font-size:0.85rem; color:#ef4444;" title="Hapus Template" onclick="deletePromoTemplate('${tpl.id}', '${escapeHtml(tpl.name)}')">
+                            <button class="btn-icon" style="width:28px; height:28px; font-size:0.85rem; color:#ef4444;" title="Hapus Template" onclick="window.deletePromoTemplate('${tpl.id}', '${escapeHtml(tpl.name)}')">
                                 <i class='bx bx-trash'></i>
                             </button>
                         </div>
@@ -4369,7 +4975,7 @@ function loadTemplateToSimulator(id) {
     const input = document.getElementById('promo-spintax-input');
     if (input) {
         input.value = tpl.content;
-        showToast(`Template "${tpl.name}" dimuat ke simulator`, 'info');
+        window.showToast?.(`Template "${tpl.name}" dimuat ke simulator`, 'info');
         document.getElementById('btn-promo-test-spintax')?.click();
     }
 }
@@ -4378,35 +4984,78 @@ async function deletePromoTemplate(id, name) {
     if (!confirm(`Hapus template "${name}"?`)) return;
     try {
         await fetch(`/api/promo/templates/${id}`, { method: 'DELETE' });
-        showToast('Template dihapus', 'warning');
+        window.showToast?.('Template dihapus', 'warning');
         loadPromoTemplates();
     } catch (err) {
-        showToast('Error: ' + err.message, 'error');
+        window.showToast?.('Error: ' + err.message, 'error');
     }
 }
+
+// ─── Pengaturan Anti-Ban & Safeguard ──────────────────────────
 
 async function loadPromoSettings() {
     try {
         const s = await fetch('/api/promo/settings').then(r => r.json());
         if (!s) return;
 
-        if (document.getElementById('setting-delayMinSec')) document.getElementById('setting-delayMinSec').value = s.delayMinSec || 90;
-        if (document.getElementById('setting-delayMaxSec')) document.getElementById('setting-delayMaxSec').value = s.delayMaxSec || 240;
-        if (document.getElementById('setting-rotationMode')) document.getElementById('setting-rotationMode').value = s.rotationMode || 'round-robin';
-        if (document.getElementById('setting-hourlyLimitPerToken')) document.getElementById('setting-hourlyLimitPerToken').value = s.hourlyLimitPerToken || 6;
-        if (document.getElementById('setting-dailyLimitPerToken')) document.getElementById('setting-dailyLimitPerToken').value = s.dailyLimitPerToken || 30;
-        if (document.getElementById('setting-channelCooldownMin')) document.getElementById('setting-channelCooldownMin').value = s.channelCooldownMin || 120;
-        
-        if (document.getElementById('setting-simulateTyping')) document.getElementById('setting-simulateTyping').checked = s.simulateTyping !== false;
+        if (document.getElementById('setting-campaignMode')) {
+            document.getElementById('setting-campaignMode').value = s.campaignMode || 'DM_MEMBER';
+        }
+        if (document.getElementById('setting-dmBatchMinUsers')) {
+            document.getElementById('setting-dmBatchMinUsers').value = s.dmBatchMinUsers || 3;
+        }
+        if (document.getElementById('setting-dmBatchMaxUsers')) {
+            document.getElementById('setting-dmBatchMaxUsers').value = s.dmBatchMaxUsers || 5;
+        }
+        if (document.getElementById('setting-dmDelayMinSec')) {
+            document.getElementById('setting-dmDelayMinSec').value = s.dmDelayMinSec || 25;
+        }
+        if (document.getElementById('setting-dmDelayMaxSec')) {
+            document.getElementById('setting-dmDelayMaxSec').value = s.dmDelayMaxSec || 45;
+        }
+        if (document.getElementById('setting-dmAccountCooldownMin')) {
+            document.getElementById('setting-dmAccountCooldownMin').value = s.dmAccountCooldownMin || 3;
+        }
+        if (document.getElementById('setting-dmAccountCooldownMax')) {
+            document.getElementById('setting-dmAccountCooldownMax').value = s.dmAccountCooldownMax || 5;
+        }
+
+        if (document.getElementById('setting-hourlyLimitPerToken')) {
+            document.getElementById('setting-hourlyLimitPerToken').value = s.hourlyLimitPerToken || 10;
+        }
+        if (document.getElementById('setting-dailyLimitPerToken')) {
+            document.getElementById('setting-dailyLimitPerToken').value = s.dailyLimitPerToken || 40;
+        }
+
+        if (document.getElementById('setting-simulateTyping')) {
+            document.getElementById('setting-simulateTyping').checked = s.simulateTyping !== false;
+        }
+
         if (document.getElementById('setting-workingHoursEnabled')) {
             document.getElementById('setting-workingHoursEnabled').checked = !!s.workingHoursEnabled;
             const grid = document.getElementById('promo-working-hours-grid');
             if (grid) grid.style.display = s.workingHoursEnabled ? 'grid' : 'none';
         }
-        if (document.getElementById('setting-workingHoursStart')) document.getElementById('setting-workingHoursStart').value = s.workingHoursStart || 8;
-        if (document.getElementById('setting-workingHoursEnd')) document.getElementById('setting-workingHoursEnd').value = s.workingHoursEnd || 23;
+        if (document.getElementById('setting-workingHoursStart')) {
+            document.getElementById('setting-workingHoursStart').value = s.workingHoursStart || 8;
+        }
+        if (document.getElementById('setting-workingHoursEnd')) {
+            document.getElementById('setting-workingHoursEnd').value = s.workingHoursEnd || 23;
+        }
+
+        if (document.getElementById('setting-notifyOnServerCompleted')) {
+            document.getElementById('setting-notifyOnServerCompleted').checked = s.notifyOnServerCompleted !== false;
+        }
+        if (document.getElementById('setting-notifyOnAccountLimit')) {
+            document.getElementById('setting-notifyOnAccountLimit').checked = s.notifyOnAccountLimit !== false;
+        }
+        if (document.getElementById('setting-notifyOnIncomingDm')) {
+            document.getElementById('setting-notifyOnIncomingDm').checked = s.notifyOnIncomingDm !== false;
+        }
     } catch (_) {}
 }
+
+// ─── Riwayat Log Promosi ──────────────────────────────────────
 
 async function loadPromoLogs() {
     try {
@@ -4433,12 +5082,16 @@ async function loadPromoLogs() {
             else if (l.status === 'FAILED') statusBadge = '<span class="badge" style="background:#ef444422; color:#ef4444;">GAGAL</span>';
             else if (l.status === 'SKIPPED') statusBadge = '<span class="badge" style="background:#64748b22; color:#94a3b8;">LEWATI</span>';
 
+            const targetDisplay = l.recipientTag
+                ? `DM: <b>${escapeHtml(l.recipientTag)}</b> (${escapeHtml(l.guildName || 'Server')})`
+                : `<b>${escapeHtml(l.guildName || '-')}</b> <span style="color:#38bdf8;">#${escapeHtml(l.channelName || l.channelId)}</span>`;
+
             return `
                 <tr>
                     <td style="white-space:nowrap; font-family:'JetBrains Mono', monospace; font-size:0.8rem;">${l.timeStr}</td>
                     <td>${statusBadge}</td>
                     <td><b>${escapeHtml(l.tokenTag || '-')}</b></td>
-                    <td><b>${escapeHtml(l.guildName || '-')}</b> <span style="color:#38bdf8;">#${escapeHtml(l.channelName || l.channelId)}</span></td>
+                    <td>${targetDisplay}</td>
                     <td style="max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:0.8rem; color:var(--text-secondary);" title="${escapeHtml(l.messagePreview || '')}">
                         ${escapeHtml(l.messagePreview || '-')}
                     </td>
@@ -4449,8 +5102,8 @@ async function loadPromoLogs() {
     } catch (_) {}
 }
 
-// Auto-Discovery Scanner
-let _discoveredChannelsList = [];
+// ─── Auto-Discovery Scanner & Test Send ────────────────────────
+
 async function runChannelDiscovery() {
     const tbody = document.getElementById('promo-discover-tbody');
     const countEl = document.getElementById('promo-discover-count');
@@ -4489,47 +5142,45 @@ async function runChannelDiscovery() {
                 `;
             }).join('');
 
-            // Select all trigger
             document.getElementById('promo-discover-select-all')?.addEventListener('change', (e) => {
                 document.querySelectorAll('.cb-discover-item:not(:disabled)').forEach(cb => cb.checked = e.target.checked);
             });
 
-            // Submit selected to targets
             const btnDiscoverSubmit = document.getElementById('btn-promo-discover-submit');
             if (btnDiscoverSubmit) {
                 btnDiscoverSubmit.onclick = async () => {
                     const selectedCheckboxes = document.querySelectorAll('.cb-discover-item:checked:not(:disabled)');
-                if (!selectedCheckboxes.length) {
-                    showToast('Pilih setidaknya satu channel!', 'warning');
-                    return;
-                }
-
-                let addedCount = 0;
-                for (const cb of selectedCheckboxes) {
-                    const item = _discoveredChannelsList[parseInt(cb.dataset.idx)];
-                    if (item) {
-                        try {
-                            await fetch('/api/promo/targets', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    channelId: item.channelId,
-                                    channelName: item.channelName,
-                                    guildName: item.guildName,
-                                    notes: `Auto-discovered via ${item.foundViaAccount}`
-                                })
-                            });
-                            addedCount++;
-                        } catch (_) {}
+                    if (!selectedCheckboxes.length) {
+                        window.showToast?.('Pilih setidaknya satu channel!', 'warning');
+                        return;
                     }
-                }
 
-                showToast(`✅ ${addedCount} channel berhasil ditambahkan ke daftar target!`, 'success');
-                closeModal('modal-promo-discover');
-                loadPromoTargets();
-                loadPromoStatus();
-            };
-        }
+                    let addedCount = 0;
+                    for (const cb of selectedCheckboxes) {
+                        const item = _discoveredChannelsList[parseInt(cb.dataset.idx)];
+                        if (item) {
+                            try {
+                                await fetch('/api/promo/targets', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        channelId: item.channelId,
+                                        channelName: item.channelName,
+                                        guildName: item.guildName,
+                                        notes: `Auto-discovered via ${item.foundViaAccount}`
+                                    })
+                                });
+                                addedCount++;
+                            } catch (_) {}
+                        }
+                    }
+
+                    window.showToast?.(`✅ ${addedCount} channel berhasil ditambahkan ke daftar target!`, 'success');
+                    window.closeModal?.('modal-promo-discover');
+                    loadPromoTargets();
+                    loadPromoStatus();
+                };
+            }
         } else {
             tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px; color:#ef4444;">Gagal memindai: ${res.error || 'Unknown error'}</td></tr>`;
         }
@@ -4561,4 +5212,50 @@ function populateTestSendModal() {
         ).join('') || '<option value="">Tidak ada template aktif</option>';
     }
 }
+
+// ─── Attach All Functions to Window (Bulletproof Global Scope) ───
+window.loadPromo = loadPromo;
+window.initPromoOnce = initPromoOnce;
+window.loadPromoStatus = loadPromoStatus;
+window.loadPromoTokens = loadPromoTokens;
+window.importPromoTokens = importPromoTokens;
+window.togglePromoToken = togglePromoToken;
+window.deletePromoToken = deletePromoToken;
+
+window.loadPromoDmServers = loadPromoDmServers;
+window.savePromoDmServer = savePromoDmServer;
+window.deletePromoDmServer = deletePromoDmServer;
+window.togglePromoDmServer = togglePromoDmServer;
+window.scrapePromoDmServer = scrapePromoDmServer;
+window.scanPromoDmServers = scanPromoDmServers;
+window.addPromoDmServerFromScan = addPromoDmServerFromScan;
+
+window.loadPromoInbox = loadPromoInbox;
+window.renderPromoInboxList = renderPromoInboxList;
+window.filterPromoInbox = filterPromoInbox;
+window.selectPromoConversation = selectPromoConversation;
+window.sendPromoDmReply = sendPromoDmReply;
+window.markPromoActiveChatRead = markPromoActiveChatRead;
+window.deletePromoActiveChat = deletePromoActiveChat;
+window.refreshPromoInbox = refreshPromoInbox;
+
+window.loadPromoTargets = loadPromoTargets;
+window.togglePromoTarget = togglePromoTarget;
+window.deletePromoTarget = deletePromoTarget;
+window.loadPromoTemplates = loadPromoTemplates;
+window.loadTemplateToSimulator = loadTemplateToSimulator;
+window.deletePromoTemplate = deletePromoTemplate;
+window.loadPromoSettings = loadPromoSettings;
+window.loadPromoLogs = loadPromoLogs;
+window.runChannelDiscovery = runChannelDiscovery;
+window.populateTestSendModal = populateTestSendModal;
+
+// Auto-run if promo section is initially active
+document.addEventListener('DOMContentLoaded', () => {
+    const promoSection = document.getElementById('section-promo');
+    if (promoSection && promoSection.classList.contains('active')) {
+        loadPromo();
+    }
+});
+
 

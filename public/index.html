@@ -1372,17 +1372,17 @@
                         </div>
                         <div class="box">
                             <div class="right-side">
-                                <div class="box-topic">Target Channels</div>
-                                <div class="number" id="promo-stat-targets">0</div>
-                                <div class="indicator" id="promo-stat-targets-sub"><i class='bx bx-target-lock'></i> 0 channel aktif</div>
+                                <div class="box-topic">Target Server DM</div>
+                                <div class="number" id="promo-stat-servers">0</div>
+                                <div class="indicator" id="promo-stat-servers-sub"><i class='bx bx-target-lock'></i> 0 server aktif</div>
                             </div>
-                            <div class="cart four"><i class='bx bx-hash'></i></div>
+                            <div class="cart four" style="background:rgba(14,165,233,0.1); color:#0ea5e9;"><i class='bx bx-bullseye'></i></div>
                         </div>
                         <div class="box">
                             <div class="right-side">
-                                <div class="box-topic">Pesan Terkirim</div>
+                                <div class="box-topic">DM Terkirim</div>
                                 <div class="number" id="promo-stat-sent">0</div>
-                                <div class="indicator" id="promo-stat-rate"><i class='bx bx-check-double'></i> Hari ini: 0 pesan</div>
+                                <div class="indicator" id="promo-stat-rate"><i class='bx bx-check-double'></i> Hari ini: 0 DM</div>
                             </div>
                             <div class="cart three"><i class='bx bx-send'></i></div>
                         </div>
@@ -1390,22 +1390,30 @@
 
                     <!-- Subtabs Navigation -->
                     <div class="promo-tabs-nav">
-                        <button class="promo-tab-btn active" data-tab="promo-tokens">
+                        <button class="promo-tab-btn active" data-tab="tab-promo-tokens">
                             <i class='bx bx-user'></i> <span>Akun Token (Pool)</span>
                             <span class="nav-badge" id="badge-promo-tokens" style="background:#3b82f6; margin-left:4px;">0</span>
                         </button>
-                        <button class="promo-tab-btn" data-tab="promo-targets">
-                            <i class='bx bx-target-lock'></i> <span>Target Channel & Server</span>
+                        <button class="promo-tab-btn" data-tab="tab-promo-dm-servers">
+                            <i class='bx bx-bullseye'></i> <span>Target Server (DM Member)</span>
+                            <span class="nav-badge" id="badge-promo-dm-servers" style="background:#0ea5e9; margin-left:4px;">0</span>
+                        </button>
+                        <button class="promo-tab-btn" data-tab="tab-promo-inbox">
+                            <i class='bx bx-chat'></i> <span>Live DM Inbox</span>
+                            <span class="nav-badge" id="badge-promo-inbox" style="background:#ec4899; margin-left:4px;">0</span>
+                        </button>
+                        <button class="promo-tab-btn" data-tab="tab-promo-targets">
+                            <i class='bx bx-broadcast'></i> <span>Target Channel (Post)</span>
                             <span class="nav-badge" id="badge-promo-targets" style="background:#10b981; margin-left:4px;">0</span>
                         </button>
-                        <button class="promo-tab-btn" data-tab="promo-templates">
+                        <button class="promo-tab-btn" data-tab="tab-promo-templates">
                             <i class='bx bx-edit'></i> <span>Template & Spintax</span>
                             <span class="nav-badge" id="badge-promo-templates" style="background:#a855f7; margin-left:4px;">0</span>
                         </button>
-                        <button class="promo-tab-btn" data-tab="promo-settings">
-                            <i class='bx bx-shield-quarter'></i> <span>Anti-Ban & Keamanan</span>
+                        <button class="promo-tab-btn" data-tab="tab-promo-settings">
+                            <i class='bx bx-shield-quarter'></i> <span>Anti-Ban & Safeguard</span>
                         </button>
-                        <button class="promo-tab-btn" data-tab="promo-logs">
+                        <button class="promo-tab-btn" data-tab="tab-promo-logs">
                             <i class='bx bx-list-ul'></i> <span>Live Log & Riwayat</span>
                         </button>
                     </div>
@@ -1416,13 +1424,13 @@
                             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
                                 <div>
                                     <h3 style="margin:0;"><i class='bx bx-group'></i> Multi-Account Token Pool</h3>
-                                    <p class="subtitle" style="margin:4px 0 0;">Akun Discord yang digunakan untuk mengirim pesan promosi secara bergiliran (rotasi otomatis).</p>
+                                    <p class="subtitle" style="margin:4px 0 0;">Akun Discord yang digunakan untuk mengirim pesan promosi secara bergiliran (rotasi otomatis 3–5 member per akun).</p>
                                 </div>
                                 <div style="display:flex; gap:10px;">
-                                    <button id="btn-promo-import-token" class="btn-ghost" title="Ambil token yang sudah ada di mirror bot">
+                                    <button id="btn-promo-import-token" class="btn-ghost" title="Ambil token yang sudah ada di mirror bot" onclick="window.importPromoTokens()">
                                         <i class='bx bx-download'></i> <span>Import Token dari Mirror Bot</span>
                                     </button>
-                                    <button id="btn-promo-modal-token" class="btn-primary">
+                                    <button id="btn-promo-modal-token" class="btn-primary" onclick="window.openModal('modal-promo-add-token')">
                                         <i class='bx bx-plus'></i> <span>Tambah Akun Token Baru</span>
                                     </button>
                                 </div>
@@ -1431,6 +1439,108 @@
                                 <!-- Filled by JS -->
                                 <div style="grid-column: 1/-1; text-align:center; padding:30px; color:var(--text-secondary);">
                                     Memuat daftar akun token...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 2: TARGET SERVER (DM MEMBER) -->
+                    <div id="tab-promo-dm-servers" class="promo-tab-content">
+                        <div class="glass-card" style="margin-bottom:20px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
+                                <div>
+                                    <h3 style="margin:0;"><i class='bx bx-bullseye' style="color:#38bdf8;"></i> Target Server Discord (Auto DM Member)</h3>
+                                    <p class="subtitle" style="margin:4px 0 0;">Promosi langsung ke DM para member di server target. Rotasi 3–5 member per akun dengan delay anti-ban 3–5 menit.</p>
+                                </div>
+                                <div style="display:flex; gap:10px;">
+                                    <button id="btn-promo-scan-dm-servers" class="btn-ghost" onclick="window.scanPromoDmServers()">
+                                        <i class='bx bx-radar'></i> <span>Pindai Server dari Akun (Scan)</span>
+                                    </button>
+                                    <button id="btn-promo-modal-dm-server" class="btn-primary" onclick="window.openModal('modal-promo-add-dm-server')">
+                                        <i class='bx bx-plus'></i> <span>Tambah Server Target Manual</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="promo-dm-servers-container" class="promo-server-grid">
+                                <!-- Filled by JS -->
+                                <div style="grid-column: 1/-1; text-align:center; padding:30px; color:var(--text-secondary);">
+                                    Memuat daftar target server DM...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 3: SHARED LIVE DM INBOX HUB -->
+                    <div id="tab-promo-inbox" class="promo-tab-content">
+                        <div class="glass-card" style="margin-bottom:20px; padding:0; overflow:hidden;">
+                            <div style="padding:16px 20px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                                <div>
+                                    <h3 style="margin:0;"><i class='bx bx-chat' style="color:#38bdf8;"></i> Shared Live DM Inbox (Hub Obrolan Semua Akun)</h3>
+                                    <p class="subtitle" style="margin:4px 0 0;">Balasan dari calon member di seluruh akun masuk ke sini. Balas pesan calon member langsung dari web dashboard.</p>
+                                </div>
+                                <button class="btn-ghost" onclick="window.refreshPromoInbox()" style="padding:6px 14px; font-size:0.85rem;">
+                                    <i class='bx bx-refresh'></i> <span>Refresh Inbox</span>
+                                </button>
+                            </div>
+
+                            <div class="promo-inbox-container">
+                                <!-- Sidebar: Conversation List -->
+                                <div class="promo-inbox-sidebar">
+                                    <div class="promo-inbox-search-box">
+                                        <input type="text" id="promo-inbox-search" placeholder="Cari percakapan / user..." oninput="window.filterPromoInbox(this.value)">
+                                    </div>
+                                    <div id="promo-inbox-list" class="promo-inbox-list">
+                                        <div style="text-align:center; padding:40px 16px; color:var(--text-secondary); font-size:0.88rem;">
+                                            Belum ada obrolan DM masuk
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Main: Active Conversation Thread -->
+                                <div class="promo-inbox-main" id="promo-chat-main-empty">
+                                    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; color:var(--text-secondary); padding:24px; text-align:center;">
+                                        <i class='bx bx-conversation' style="font-size:3.5rem; color:rgba(56,189,248,0.4); margin-bottom:12px;"></i>
+                                        <h3 style="margin:0 0 6px;">Pilih Obrolan untuk Membalas</h3>
+                                        <p style="font-size:0.88rem; max-width:380px; margin:0; line-height:1.5;">Klik salah satu calon member di sebelah kiri untuk melihat riwayat pesan dan mengirim balasan melalui akun Discord terkait.</p>
+                                    </div>
+                                </div>
+
+                                <div class="promo-inbox-main" id="promo-chat-main-active" style="display:none;">
+                                    <div class="promo-chat-header">
+                                        <div class="promo-chat-header-user">
+                                            <img id="promo-chat-header-avatar" src="" class="promo-conv-avatar" alt="Avatar">
+                                            <div>
+                                                <div id="promo-chat-header-name" style="font-weight:700; font-size:0.95rem;">-</div>
+                                                <div style="display:flex; align-items:center; gap:8px;">
+                                                    <span id="promo-chat-header-id" style="font-size:0.75rem; color:var(--text-secondary); font-family:monospace;">ID: -</span>
+                                                    <span style="opacity:0.3;">|</span>
+                                                    <span id="promo-chat-header-via" class="promo-conv-via-badge">via -</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div style="display:flex; gap:8px;">
+                                            <button class="btn-ghost" id="btn-promo-chat-mark-read" style="padding:6px 12px; font-size:0.8rem;" onclick="window.markPromoActiveChatRead()">
+                                                <i class='bx bx-check-double'></i> Tandai Dibaca
+                                            </button>
+                                            <button class="btn-ghost" id="btn-promo-chat-delete" style="padding:6px 12px; font-size:0.8rem; color:#f87171;" onclick="window.deletePromoActiveChat()">
+                                                <i class='bx bx-trash'></i>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Message Bubbles Container -->
+                                    <div id="promo-chat-messages" class="promo-chat-messages">
+                                        <!-- Filled by JS -->
+                                    </div>
+
+                                    <!-- Message Reply Footer -->
+                                    <form id="promo-chat-form" class="promo-chat-input-area" onsubmit="window.sendPromoDmReply(event)">
+                                        <textarea id="promo-reply-input" placeholder="Tulis pesan balasan untuk dikirimkan via akun Discord ini... (Enter untuk kirim)" required onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault(); window.sendPromoDmReply(event);}"></textarea>
+                                        <button type="submit" class="btn-primary" id="btn-promo-send-reply" style="height:48px; padding:0 20px; display:flex; align-items:center; gap:6px;">
+                                            <i class='bx bx-send'></i> <span>Kirim</span>
+                                        </button>
+                                    </form>
                                 </div>
                             </div>
                         </div>
@@ -1540,57 +1650,79 @@
                     <div id="tab-promo-settings" class="promo-tab-content">
                         <form id="form-promo-settings">
                             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:20px; margin-bottom:20px;">
-                                <!-- Delay Acak (Human Jitter) -->
+                                <!-- Mode Operasi & Jeda Auto-DM -->
                                 <div class="glass-card">
                                     <h3 style="display:flex;align-items:center;gap:8px;font-size:1.05rem;margin-bottom:12px;">
-                                        <i class='bx bx-timer' style="color:#f59e0b;"></i> Delay Acak & Jitter (Anti-Deteksi)
+                                        <i class='bx bx-paper-plane' style="color:#38bdf8;"></i> Mode Promosi & Batch DM
                                     </h3>
-                                    <p class="subtitle" style="margin-bottom:16px;">Setiap pengiriman pesan menggunakan jeda acak antara batas minimum dan maksimum untuk meniru perilaku manusia asli.</p>
+                                    <p class="subtitle" style="margin-bottom:16px;">Konfigurasi utama sistem promosi DM otomatis per akun dengan rotasi aman.</p>
                                     
+                                    <div class="form-group">
+                                        <label>Mode Promosi Utama</label>
+                                        <select id="setting-campaignMode" class="form-control" style="font-weight:600;">
+                                            <option value="DM">🎯 DM-to-DM (Kirim Langsung ke Member Server) [Rekomendasi]</option>
+                                            <option value="CHANNEL">📢 Channel Post (Kirim ke Channel Teks Server)</option>
+                                        </select>
+                                    </div>
+
                                     <div class="form-grid">
                                         <div class="form-group">
-                                            <label>Min Delay (Detik)</label>
-                                            <input type="number" id="setting-delayMinSec" class="form-control" min="30" max="1800" value="90">
-                                            <div class="form-hint">Disarankan: min 60–90 detik</div>
+                                            <label>Min Member per Batch</label>
+                                            <input type="number" id="setting-dmBatchMinUsers" class="form-control" min="1" max="15" value="3">
+                                            <div class="form-hint">Standar: 3 orang per akun</div>
                                         </div>
                                         <div class="form-group">
-                                            <label>Max Delay (Detik)</label>
-                                            <input type="number" id="setting-delayMaxSec" class="form-control" min="60" max="3600" value="240">
-                                            <div class="form-hint">Disarankan: 180–300 detik</div>
+                                            <label>Max Member per Batch</label>
+                                            <input type="number" id="setting-dmBatchMaxUsers" class="form-control" min="1" max="25" value="5">
+                                            <div class="form-hint">Standar: 5 orang per akun</div>
                                         </div>
                                     </div>
-                                    <div class="form-group" style="margin-bottom:0;">
-                                        <label>Mode Rotasi Akun & Target</label>
-                                        <select id="setting-rotationMode" class="form-control">
-                                            <option value="round-robin">Round-Robin (Bergiliran Rata 1 per 1)</option>
-                                            <option value="random">Random Acak (Beban Terdistribusi)</option>
-                                        </select>
+
+                                    <div class="form-grid">
+                                        <div class="form-group">
+                                            <label>Min Jeda Antar Member (Detik)</label>
+                                            <input type="number" id="setting-dmDelayMinSec" class="form-control" min="10" max="120" value="25">
+                                            <div class="form-hint">Jeda human typing: min 25s</div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Max Jeda Antar Member (Detik)</label>
+                                            <input type="number" id="setting-dmDelayMaxSec" class="form-control" min="20" max="300" value="45">
+                                            <div class="form-hint">Jeda human typing: max 45s</div>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <!-- Batas Kuota Akun (Anti-Flagging) -->
+                                <!-- Delay Istirahat Antar Rotasi Akun -->
                                 <div class="glass-card">
                                     <h3 style="display:flex;align-items:center;gap:8px;font-size:1.05rem;margin-bottom:12px;">
-                                        <i class='bx bx-shield' style="color:#10b981;"></i> Batas Kuota Akun (Safe Quotas)
+                                        <i class='bx bx-time' style="color:#f59e0b;"></i> Delay Istirahat Rotasi Akun
                                     </h3>
-                                    <p class="subtitle" style="margin-bottom:16px;">Mencegah satu akun diblokir karena terlalu aktif mengirim pesan di Discord.</p>
+                                    <p class="subtitle" style="margin-bottom:16px;">Setelah satu akun selesai nge-DM 3–5 orang, akun akan istirahat sebelum rotasi ke akun berikutnya.</p>
                                     
                                     <div class="form-grid">
                                         <div class="form-group">
+                                            <label>Min Delay Istirahat (Menit)</label>
+                                            <input type="number" id="setting-dmAccountCooldownMin" class="form-control" min="1" max="60" value="3">
+                                            <div class="form-hint">Permintaan Anda: 3 menit</div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Max Delay Istirahat (Menit)</label>
+                                            <input type="number" id="setting-dmAccountCooldownMax" class="form-control" min="2" max="120" value="5">
+                                            <div class="form-hint">Permintaan Anda: 5 menit</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-grid">
+                                        <div class="form-group">
                                             <label>Maks Pesan per Jam (per Akun)</label>
-                                            <input type="number" id="setting-hourlyLimitPerToken" class="form-control" min="1" max="50" value="6">
-                                            <div class="form-hint">Aman: 5–8 pesan/jam</div>
+                                            <input type="number" id="setting-hourlyLimitPerToken" class="form-control" min="1" max="50" value="10">
+                                            <div class="form-hint">Aman: 8–12 pesan/jam</div>
                                         </div>
                                         <div class="form-group">
                                             <label>Maks Pesan per Hari (per Akun)</label>
-                                            <input type="number" id="setting-dailyLimitPerToken" class="form-control" min="5" max="300" value="30">
-                                            <div class="form-hint">Aman: 25–40 pesan/hari</div>
+                                            <input type="number" id="setting-dailyLimitPerToken" class="form-control" min="5" max="300" value="40">
+                                            <div class="form-hint">Aman: 30–50 pesan/hari</div>
                                         </div>
-                                    </div>
-                                    <div class="form-group" style="margin-bottom:0;">
-                                        <label>Cooldown Channel yang Sama (Menit)</label>
-                                        <input type="number" id="setting-channelCooldownMin" class="form-control" min="10" max="1440" value="120">
-                                        <div class="form-hint">Jarak waktu sebelum posting lagi di channel yang sama</div>
                                     </div>
                                 </div>
 
@@ -1604,7 +1736,7 @@
                                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; padding:10px 14px; background:rgba(255,255,255,0.03); border-radius:8px; border:1px solid var(--border-color);">
                                         <div>
                                             <div style="font-weight:600; font-size:0.9rem;">Simulasi Mengetik (Typing Status)</div>
-                                            <div style="font-size:0.78rem; color:var(--text-secondary);">Kirim status "Typing..." 3–7 detik sebelum pesan diposting</div>
+                                            <div style="font-size:0.78rem; color:var(--text-secondary);">Kirim status "Typing..." 2–5 detik sebelum DM terkirim</div>
                                         </div>
                                         <label class="switch">
                                             <input type="checkbox" id="setting-simulateTyping" checked>
@@ -1615,7 +1747,7 @@
                                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding:10px 14px; background:rgba(255,255,255,0.03); border-radius:8px; border:1px solid var(--border-color);">
                                         <div>
                                             <div style="font-weight:600; font-size:0.9rem;">Jadwal Jam Kerja Aktif</div>
-                                            <div style="font-size:0.78rem; color:var(--text-secondary);">Hanya kirim pada siang/malam, istirahat saat larut malam</div>
+                                            <div style="font-size:0.78rem; color:var(--text-secondary);">Hanya promosi pada jam sibuk, istirahat saat larut malam</div>
                                         </div>
                                         <label class="switch">
                                             <input type="checkbox" id="setting-workingHoursEnabled">
@@ -1634,11 +1766,52 @@
                                         </div>
                                     </div>
                                 </div>
+
+                                <!-- Notifikasi Telegram Bot -->
+                                <div class="glass-card">
+                                    <h3 style="display:flex;align-items:center;gap:8px;font-size:1.05rem;margin-bottom:12px;">
+                                        <i class='bx bxl-telegram' style="color:#0ea5e9;"></i> Laporan & Notifikasi Telegram
+                                    </h3>
+                                    <p class="subtitle" style="margin-bottom:16px;">Menerima pemberitahuan real-time langsung ke bot Telegram admin.</p>
+                                    
+                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding:10px 14px; background:rgba(255,255,255,0.03); border-radius:8px; border:1px solid var(--border-color);">
+                                        <div>
+                                            <div style="font-weight:600; font-size:0.9rem;">Laporan Server Selesai di-DM</div>
+                                            <div style="font-size:0.78rem; color:var(--text-secondary);">Kirim rekap saat semua member dalam satu server selesai di-DM</div>
+                                        </div>
+                                        <label class="switch">
+                                            <input type="checkbox" id="setting-notifyOnServerCompleted" checked>
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
+
+                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding:10px 14px; background:rgba(255,255,255,0.03); border-radius:8px; border:1px solid var(--border-color);">
+                                        <div>
+                                            <div style="font-weight:600; font-size:0.9rem;">Peringatan Akun Limit / Ban</div>
+                                            <div style="font-size:0.78rem; color:var(--text-secondary);">Beri tahu segera jika ada token yang terkena rate-limit 429 atau ban</div>
+                                        </div>
+                                        <label class="switch">
+                                            <input type="checkbox" id="setting-notifyOnAccountLimit" checked>
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
+
+                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0; padding:10px 14px; background:rgba(255,255,255,0.03); border-radius:8px; border:1px solid var(--border-color);">
+                                        <div>
+                                            <div style="font-weight:600; font-size:0.9rem;">Notifikasi DM Balasan Masuk</div>
+                                            <div style="font-size:0.78rem; color:var(--text-secondary);">Kirim alert ke Telegram saat ada calon member membalas pesan</div>
+                                        </div>
+                                        <label class="switch">
+                                            <input type="checkbox" id="setting-notifyOnIncomingDm" checked>
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
+                                </div>
                             </div>
 
                             <div style="display:flex; justify-content:flex-end; gap:12px;">
                                 <button type="submit" class="btn-success" style="padding:10px 24px;">
-                                    <i class='bx bx-save'></i> Simpan Pengaturan Anti-Ban
+                                    <i class='bx bx-save'></i> Simpan Pengaturan Anti-Ban & Safeguard
                                 </button>
                             </div>
                         </form>
@@ -2262,6 +2435,57 @@
                     <button type="submit" class="btn-primary" id="btn-save-promo-token"><i class='bx bx-check'></i> Simpan & Hubungkan</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Modal Add Target Server DM Manual -->
+    <div id="modal-promo-add-dm-server" class="modal" role="dialog" aria-modal="true">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header">
+                <h2><i class='bx bx-bullseye' style="color:#38bdf8;"></i> Tambah Server Target DM</h2>
+                <span class="close-modal" data-modal="modal-promo-add-dm-server">&times;</span>
+            </div>
+            <form id="form-promo-add-dm-server" onsubmit="window.savePromoDmServer(event)">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Discord Guild / Server ID <span class="req-star">*</span></label>
+                        <input type="text" id="promo-dm-server-input-id" class="form-control" required placeholder="e.g. 109876543210987654">
+                        <div class="form-hint">Salin ID Server tempat Anda ingin mempromosikan pesan ke para membernya.</div>
+                    </div>
+                    <div class="form-group" style="margin-bottom:6px;">
+                        <label>Nama Server (Opsional)</label>
+                        <input type="text" id="promo-dm-server-input-name" class="form-control" placeholder="e.g. Komunitas Crypto VIP">
+                    </div>
+                    <div style="font-size:0.78rem; color:#94a3b8; line-height:1.45;">
+                        <i class='bx bx-info-circle' style="color:#38bdf8;"></i> Pastikan minimal salah satu akun token Discord Anda sudah bergabung ke dalam server target ini.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-ghost close-modal" data-modal="modal-promo-add-dm-server">Batal</button>
+                    <button type="submit" class="btn-primary" id="btn-save-promo-dm-server"><i class='bx bx-check'></i> Simpan & Scrape Member</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Scan Joined Servers for DM -->
+    <div id="modal-promo-scan-dm-servers" class="modal" role="dialog" aria-modal="true">
+        <div class="modal-content modal-lg" style="max-width: 720px;">
+            <div class="modal-header">
+                <h2><i class='bx bx-radar' style="color:#38bdf8;"></i> Pindai Server dari Akun yang Terhubung</h2>
+                <span class="close-modal" data-modal="modal-promo-scan-dm-servers">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p class="subtitle" style="margin-top:0; margin-bottom:14px;">Berikut adalah server Discord yang telah dimasuki oleh akun token promo Anda. Klik tombol "Tambahkan" untuk memasukkannya ke antrean target DM.</p>
+                <div id="promo-scan-dm-servers-list" style="max-height:360px; overflow-y:auto; display:flex; flex-direction:column; gap:10px;">
+                    <div style="text-align:center; padding:30px; color:var(--text-secondary);">
+                        Memindai server Discord...
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-ghost close-modal" data-modal="modal-promo-scan-dm-servers">Tutup</button>
+            </div>
         </div>
     </div>
 

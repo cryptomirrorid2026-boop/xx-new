@@ -2001,6 +2001,297 @@ input:checked + .slider:before { transform:translateX(26px); }
     word-break: break-word;
 }
 
+/* ─── Target Server DM Cards ────────────────────────────────── */
+.promo-server-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 16px;
+    margin-top: 14px;
+}
+.promo-server-card {
+    background: rgba(30, 41, 59, 0.7);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 18px;
+    transition: var(--transition);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+.promo-server-card:hover {
+    border-color: rgba(56, 189, 248, 0.4);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    transform: translateY(-2px);
+}
+.promo-server-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+.promo-server-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    object-fit: cover;
+    background: rgba(255, 255, 255, 0.05);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    color: #38bdf8;
+    border: 1px solid var(--border-color);
+}
+.promo-server-info {
+    flex: 1;
+    min-width: 0;
+}
+.promo-server-name {
+    font-weight: 700;
+    font-size: 1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 2px;
+}
+.promo-server-id {
+    font-size: 0.76rem;
+    color: var(--text-secondary);
+    font-family: monospace;
+}
+.promo-server-progress-box {
+    margin: 12px 0;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+}
+.promo-progress-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    margin-bottom: 6px;
+}
+.promo-progress-bar {
+    width: 100%;
+    height: 7px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.promo-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #38bdf8, #2563eb);
+    border-radius: 6px;
+    transition: width 0.4s ease;
+}
+.promo-progress-fill.completed {
+    background: linear-gradient(90deg, #10b981, #059669);
+}
 
+/* ─── Shared Live DM Inbox Hub ──────────────────────────────── */
+.promo-inbox-container {
+    display: flex;
+    height: 620px;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.3);
+}
+.promo-inbox-sidebar {
+    width: 330px;
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    background: rgba(15, 23, 42, 0.95);
+}
+.promo-inbox-search-box {
+    padding: 14px;
+    border-bottom: 1px solid var(--border-color);
+}
+.promo-inbox-search-box input {
+    width: 100%;
+    padding: 9px 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 0.86rem;
+    outline: none;
+    transition: var(--transition);
+}
+.promo-inbox-search-box input:focus {
+    border-color: #38bdf8;
+    background: rgba(255, 255, 255, 0.08);
+}
+.promo-inbox-list {
+    flex: 1;
+    overflow-y: auto;
+}
+.promo-conv-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 13px 14px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    cursor: pointer;
+    transition: var(--transition);
+    position: relative;
+}
+.promo-conv-item:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+.promo-conv-item.active {
+    background: rgba(56, 189, 248, 0.12);
+    border-left: 3px solid #38bdf8;
+}
+.promo-conv-avatar {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: #1e293b;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.promo-conv-info {
+    flex: 1;
+    min-width: 0;
+}
+.promo-conv-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 3px;
+}
+.promo-conv-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-primary);
+}
+.promo-conv-time {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+}
+.promo-conv-preview {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.3;
+}
+.promo-conv-via-badge {
+    display: inline-block;
+    font-size: 0.68rem;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    margin-top: 4px;
+}
+.promo-unread-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #38bdf8;
+    box-shadow: 0 0 8px #38bdf8;
+    flex-shrink: 0;
+}
 
-
+/* Inbox Chat Thread Area */
+.promo-inbox-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: rgba(15, 23, 42, 0.7);
+}
+.promo-chat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border-color);
+    background: rgba(15, 23, 42, 0.85);
+}
+.promo-chat-header-user {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.promo-chat-messages {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.chat-msg-bubble {
+    max-width: 75%;
+    padding: 11px 15px;
+    border-radius: 14px;
+    font-size: 0.88rem;
+    line-height: 1.45;
+    position: relative;
+    word-break: break-word;
+}
+.chat-msg-user {
+    align-self: flex-start;
+    background: rgba(30, 41, 59, 0.9);
+    border: 1px solid var(--border-color);
+    color: #e2e8f0;
+    border-bottom-left-radius: 4px;
+}
+.chat-msg-bot {
+    align-self: flex-end;
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.35), rgba(14, 165, 233, 0.35));
+    border: 1px solid rgba(56, 189, 248, 0.4);
+    color: #f8fafc;
+    border-bottom-right-radius: 4px;
+}
+.chat-msg-admin {
+    align-self: flex-end;
+    background: linear-gradient(135deg, #2563eb, #0284c7);
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+    border-bottom-right-radius: 4px;
+}
+.chat-msg-meta {
+    font-size: 0.7rem;
+    opacity: 0.7;
+    margin-top: 4px;
+    text-align: right;
+}
+.promo-chat-input-area {
+    padding: 14px 20px;
+    border-top: 1px solid var(--border-color);
+    background: rgba(15, 23, 42, 0.95);
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+}
+.promo-chat-input-area textarea {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: var(--text-primary);
+    font-size: 0.88rem;
+    resize: none;
+    height: 48px;
+    max-height: 120px;
+    outline: none;
+    font-family: inherit;
+    transition: var(--transition);
+}
+.promo-chat-input-area textarea:focus {
+    border-color: #38bdf8;
+    background: rgba(255, 255, 255, 0.08);
+}

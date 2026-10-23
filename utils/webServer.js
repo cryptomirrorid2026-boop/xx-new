@@ -985,6 +985,77 @@ function startWebServer(tgManager, channelMap, port = 5080, tg2dcStore = null) {
     res.json({ success: true, ...result });
   });
 
+  // ── DM-to-DM Target Servers ──────────────────────────────────
+  app.get('/api/promo/dm-servers', (_, res) => res.json(promoManager.getDmServers()));
+  app.post('/api/promo/dm-servers', (req, res) => {
+    try {
+      const srv = promoManager.addDmServer(req.body.guildId, req.body.guildName);
+      res.json({ success: true, server: srv });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+  app.post('/api/promo/dm-servers/scan', async (_, res) => {
+    try {
+      const guilds = await promoManager.scanJoinedGuilds();
+      res.json({ success: true, guilds });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.post('/api/promo/dm-servers/:id/scrape', async (req, res) => {
+    try {
+      const result = await promoManager.scrapeGuildMembers(req.params.id);
+      res.json(result);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+  app.delete('/api/promo/dm-servers/:id', (req, res) => {
+    try {
+      promoManager.removeDmServer(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(404).json({ error: err.message });
+    }
+  });
+  app.post('/api/promo/dm-servers/:id/toggle', (req, res) => {
+    try {
+      const srv = promoManager.toggleDmServer(req.params.id, req.body.enabled !== false);
+      res.json({ success: true, server: srv });
+    } catch (err) {
+      res.status(404).json({ error: err.message });
+    }
+  });
+
+  // ── Shared Live DM Inbox Hub ─────────────────────────────────
+  app.get('/api/promo/inbox', (_, res) => res.json(promoManager.getInbox()));
+  app.get('/api/promo/inbox/:convId', (req, res) => {
+    try {
+      const conv = promoManager.getConversation(req.params.convId);
+      res.json(conv);
+    } catch (err) {
+      res.status(404).json({ error: err.message });
+    }
+  });
+  app.post('/api/promo/inbox/:convId/reply', async (req, res) => {
+    try {
+      const result = await promoManager.sendDmReply(req.params.convId, req.body.message);
+      res.json(result);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+  app.post('/api/promo/inbox/:convId/mark-read', (req, res) => {
+    promoManager.markConversationRead(req.params.convId);
+    res.json({ success: true });
+  });
+  app.delete('/api/promo/inbox/:convId', (req, res) => {
+    promoManager.deleteConversation(req.params.convId);
+    res.json({ success: true });
+  });
+
+  // ── Target Channels (Post Mode) ──────────────────────────────
   app.get('/api/promo/targets', (_, res) => res.json(promoManager.getTargets()));
   app.post('/api/promo/targets', (req, res) => {
     try {

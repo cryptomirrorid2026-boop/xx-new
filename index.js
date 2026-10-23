@@ -323,7 +323,7 @@ let tg2dcInitialized = false;
 // Inisialisasi AutoLinkManager (Auto-sync listener channel baru)
 autoLinkManager.init(discordRegistry);
 // Inisialisasi PromoManager (Bot Promosi Multi-Token)
-promoManager.init(discordRegistry);
+promoManager.init(discordRegistry, tgManager);
 
 discordTokens.forEach((token, idx) => {
   const accountNum = idx + 1;
