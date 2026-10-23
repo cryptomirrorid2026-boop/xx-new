@@ -108,7 +108,7 @@ class PromoManager {
           ...parsed,
           settings:  { ...this.state.settings, ...(parsed.settings || {}) },
           stats:     { ...this.state.stats, ...(parsed.stats || {}) },
-          dmServers: Array.isArray(parsed.dmServers) ? parsed.dmServers : [],
+          dmServers: (Array.isArray(parsed.dmServers) ? parsed.dmServers : []).filter(s => s && s.guildId && s.guildId !== 'undefined' && s.guildId !== 'null'),
           tokens:    Array.isArray(parsed.tokens) ? parsed.tokens : [],
           targets:   Array.isArray(parsed.targets) ? parsed.targets : [],
           templates: Array.isArray(parsed.templates) ? parsed.templates : this.state.templates
@@ -569,21 +569,42 @@ class PromoManager {
     });
   }
 
-  addDmServer(guildId, guildName = '') {
-    const cleanId = String(guildId || '').trim();
-    if (!cleanId) throw new Error('Guild / Server ID harus diisi!');
+  addDmServer(guildIdOrObj, maybeName = '', memberCount = 0) {
+    let cleanId = '';
+    let name = maybeName;
+    let count = memberCount;
+    let icon = null;
 
-    const existing = (this.state.dmServers || []).find(s => s.guildId === cleanId);
+    if (guildIdOrObj && typeof guildIdOrObj === 'object') {
+      cleanId = String(guildIdOrObj.guildId || guildIdOrObj.id || '').trim();
+      name = guildIdOrObj.guildName || guildIdOrObj.name || maybeName;
+      count = guildIdOrObj.memberCount || guildIdOrObj.approximate_member_count || memberCount || 0;
+      icon = guildIdOrObj.icon || guildIdOrObj.iconUrl || null;
+    } else {
+      cleanId = String(guildIdOrObj || '').trim();
+    }
+
+    if (!cleanId || cleanId === 'undefined' || cleanId === 'null') {
+      throw new Error('Guild / Server ID harus diisi dan valid!');
+    }
+
+    if (!Array.isArray(this.state.dmServers)) this.state.dmServers = [];
+
+    // Bersihkan server tidak valid sebelumnya jika ada
+    this.state.dmServers = this.state.dmServers.filter(s => s && s.guildId && s.guildId !== 'undefined' && s.guildId !== 'null');
+
+    const existing = this.state.dmServers.find(s => s.guildId === cleanId);
     if (existing) throw new Error('Server ini sudah terdaftar sebagai target DM!');
 
     const srv = {
       id: 'srv_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 5),
       guildId: cleanId,
-      guildName: guildName || `Server (${cleanId})`,
-      icon: null,
+      guildName: name || `Server (${cleanId})`,
+      icon: icon || null,
       enabled: true,
       scrapedMembers: [],
-      totalMembers: 0,
+      totalMembers: count || 0,
+      memberCount: count || 0,
       sentCount: 0,
       skippedCount: 0,
       completed: false,
@@ -591,7 +612,6 @@ class PromoManager {
       createdAt: Date.now()
     };
 
-    if (!Array.isArray(this.state.dmServers)) this.state.dmServers = [];
     this.state.dmServers.push(srv);
     this._save();
 
@@ -622,22 +642,82 @@ class PromoManager {
   async scanJoinedGuilds() {
     const guildsMap = new Map();
 
-    for (const [tokenId, entry] of this.clients.entries()) {
-      if (entry.isReady && entry.client) {
-        const tokenObj = this.state.tokens.find(t => t.id === tokenId);
-        entry.client.guilds.cache.forEach(g => {
-          if (!guildsMap.has(g.id)) {
-            guildsMap.set(g.id, {
-              guildId: g.id,
-              guildName: g.name,
-              icon: g.iconURL ? g.iconURL({ dynamic: true, size: 64 }) : null,
-              memberCount: g.memberCount || 0,
-              joinedTokens: []
-            });
-          }
-          guildsMap.get(g.id).joinedTokens.push(tokenObj?.tag || tokenObj?.name || tokenId);
+    const addGuildToMap = (g, tag) => {
+      if (!g || !g.id) return;
+      const gId = String(g.id);
+
+      let iconUrl = null;
+      try {
+        if (typeof g.iconURL === 'function') {
+          iconUrl = g.iconURL({ dynamic: true, size: 64 });
+        } else if (g.icon) {
+          iconUrl = `https://cdn.discordapp.com/icons/${gId}/${g.icon}.png?size=64`;
+        }
+      } catch (_) {}
+
+      const sName = g.name || 'Discord Server';
+      const mCount = g.memberCount || g.approximateMemberCount || g.approximate_member_count || 0;
+
+      if (!guildsMap.has(gId)) {
+        guildsMap.set(gId, {
+          id: gId,
+          guildId: gId,
+          name: sName,
+          guildName: sName,
+          icon: iconUrl,
+          iconUrl: iconUrl,
+          memberCount: mCount,
+          approximate_member_count: mCount,
+          alreadyAdded: (this.state.dmServers || []).some(s => s.guildId === gId),
+          joinedTokens: []
         });
       }
+
+      const existing = guildsMap.get(gId);
+      if (mCount > (existing.memberCount || 0)) {
+        existing.memberCount = mCount;
+        existing.approximate_member_count = mCount;
+      }
+      if (tag && !existing.joinedTokens.includes(tag)) {
+        existing.joinedTokens.push(tag);
+      }
+    };
+
+    // 1. Scan dari akun promo (this.clients)
+    for (const [tokenId, entry] of this.clients.entries()) {
+      if (entry && entry.client) {
+        const tokenObj = this.state.tokens.find(t => t.id === tokenId);
+        const tag = tokenObj?.tag || tokenObj?.name || entry.info?.tag || `Token-${tokenId.substring(0, 5)}`;
+
+        if (entry.client.guilds && entry.client.guilds.cache) {
+          entry.client.guilds.cache.forEach(g => addGuildToMap(g, tag));
+
+          // Jika cache masih kosong, coba fetch
+          if (entry.client.guilds.cache.size === 0 && typeof entry.client.guilds.fetch === 'function') {
+            try {
+              const fetched = await entry.client.guilds.fetch();
+              if (fetched && typeof fetched.forEach === 'function') {
+                fetched.forEach(g => addGuildToMap(g, tag));
+              }
+            } catch (_) {}
+          }
+        }
+      }
+    }
+
+    // 2. Scan dari akun mirror bot jika ada (this.discordRegistry)
+    if (this.discordRegistry && typeof this.discordRegistry.getAllClients === 'function') {
+      try {
+        const mirrorClients = this.discordRegistry.getAllClients();
+        if (Array.isArray(mirrorClients)) {
+          for (const client of mirrorClients) {
+            if (client && client.guilds && client.guilds.cache) {
+              const tag = client.user?.tag || client.user?.username || 'Mirror Bot';
+              client.guilds.cache.forEach(g => addGuildToMap(g, tag));
+            }
+          }
+        }
+      } catch (_) {}
     }
 
     return Array.from(guildsMap.values());
@@ -926,7 +1006,7 @@ class PromoManager {
     const tpl = this.state.templates.find(t => t.id === id);
     if (!tpl) throw new Error('Template tidak ditemukan!');
     if (data.name) tpl.name = data.name;
-    if (data.content) tpl.content = data.content;
+    if (data.content !== undefined) tpl.content = data.content;
     if (data.enabled !== undefined) tpl.enabled = Boolean(data.enabled);
     this._save();
     return tpl;

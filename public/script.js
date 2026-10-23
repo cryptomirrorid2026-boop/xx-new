@@ -3730,6 +3730,7 @@ let _cachedPromoDmServers = [];
 let _cachedPromoInbox = [];
 let _cachedPromoTargets = [];
 let _cachedPromoTemplates = [];
+let _editingTemplateId = null;
 let _activePromoConvId = null;
 let _discoveredChannelsList = [];
 
@@ -4011,54 +4012,28 @@ function initPromoOnce() {
                 textarea.value = text.substring(0, start) + tag + text.substring(end);
                 textarea.focus();
                 textarea.selectionStart = textarea.selectionEnd = start + tag.length;
+                window.generateRandomSpintaxVariation?.(false);
             }
         });
     });
 
+    // Auto-update live Discord preview on typing (debounced)
+    let _previewDebounceTimer = null;
+    document.getElementById('promo-spintax-input')?.addEventListener('input', () => {
+        clearTimeout(_previewDebounceTimer);
+        _previewDebounceTimer = setTimeout(() => {
+            window.generateRandomSpintaxVariation?.(false);
+        }, 300);
+    });
+
     // Spintax Tester Button
-    document.getElementById('btn-promo-test-spintax')?.addEventListener('click', async () => {
-        const content = document.getElementById('promo-spintax-input')?.value;
-        if (!content) {
-            window.showToast?.('Masukkan teks template terlebih dahulu!', 'warning');
-            return;
-        }
-
-        try {
-            const res = await fetch('/api/promo/templates/preview', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content, meta: { guildName: 'VIP Crypto Hub', channelName: 'promo-member', username: 'Member_Cuan' } })
-            }).then(r => r.json());
-
-            if (res.success) {
-                const outEl = document.getElementById('promo-spintax-output');
-                const timeEl = document.getElementById('promo-preview-time');
-                if (outEl) outEl.textContent = res.preview;
-                if (timeEl) timeEl.textContent = 'Hari ini pukul ' + new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-            }
-        } catch (err) {
-            window.showToast?.('Gagal preview: ' + err.message, 'error');
-        }
+    document.getElementById('btn-promo-test-spintax')?.addEventListener('click', () => {
+        window.generateRandomSpintaxVariation?.(true);
     });
 
     // Add New Template Button
     document.getElementById('btn-promo-new-template')?.addEventListener('click', () => {
-        const name = prompt('Masukkan Nama Template Promosi (contoh: Promo Kelas VIP DM):');
-        if (!name) return;
-        const defaultContent = "{Halo|Hai|Permisi} kak {username|kawan}! 🔥\n\n{Mau dapat sinyal trading real-time tanpa delay?|Lagi cari akses sinyal VIP dengan akurasi tinggi?}\nJoin {Kelas VIP Mirror|VIP Signal Hub} kami sekarang!\n\n📌 Benefit:\n- Sinyal trading 24/7 real-time\n- Mirror Discord & Telegram cepat\n- Edukasi & analisis mentor\n\n👉 Info & join: https://t.me/yourlink_here\n{Salam profit!|Good luck!}";
-
-        fetch('/api/promo/templates', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, content: defaultContent })
-        }).then(r => r.json()).then(res => {
-            if (res.success) {
-                window.showToast?.(`Template "${name}" berhasil dibuat!`, 'success');
-                loadPromoTemplates();
-            } else {
-                window.showToast?.('Gagal: ' + (res.error || 'Error'), 'error');
-            }
-        });
+        window.newPromoTemplate?.();
     });
 
     // Test Send Form Submit
@@ -4531,8 +4506,10 @@ async function scanPromoDmServers() {
             if (!res.guilds.length) {
                 if (container) {
                     container.innerHTML = `
-                        <div style="text-align:center; padding:30px; color:var(--text-secondary);">
-                            Tidak ada server ditemukan. Pastikan akun token promo Anda sudah join ke server target.
+                        <div style="text-align:center; padding:32px; color:var(--text-secondary);">
+                            <i class='bx bx-info-circle' style="font-size:2.2rem; color:#38bdf8; display:block; margin-bottom:8px;"></i>
+                            <b>Tidak ada server ditemukan.</b>
+                            <p style="font-size:0.85rem; margin-top:6px; color:var(--text-secondary);">Pastikan minimal 1 akun token promo sudah berstatus READY (online) dan sudah bergabung ke server Discord target.</p>
                         </div>
                     `;
                 }
@@ -4541,21 +4518,33 @@ async function scanPromoDmServers() {
 
             if (container) {
                 container.innerHTML = res.guilds.map(g => {
-                    const iconUrl = g.icon
-                        ? `https://cdn.discordapp.com/icons/${g.id}/${g.icon}.png?size=64`
-                        : `https://ui-avatars.com/api/?name=${encodeURIComponent(g.name)}&background=1e293b&color=38bdf8`;
+                    const sId = String(g.id || g.guildId || '');
+                    const sName = g.name || g.guildName || 'Discord Server';
+                    const memberCount = g.memberCount || g.approximate_member_count || 0;
+                    const iconUrl = g.iconUrl || g.icon || `https://ui-avatars.com/api/?name=${encodeURIComponent(sName)}&background=1e293b&color=38bdf8`;
+                    const isAdded = g.alreadyAdded || (_cachedPromoDmServers || []).some(s => s && s.guildId === sId);
 
-                    const btnHtml = g.alreadyAdded
-                        ? `<button class="btn-ghost" disabled style="padding:6px 12px; font-size:0.8rem; color:#94a3b8;"><i class='bx bx-check'></i> Sudah Ada</button>`
-                        : `<button class="btn-primary" style="padding:6px 14px; font-size:0.8rem;" onclick="window.addPromoDmServerFromScan('${g.id}', '${escapeHtml(g.name)}', ${g.approximate_member_count || 0})"><i class='bx bx-plus'></i> Tambahkan</button>`;
+                    const safeName = escapeHtml(sName).replace(/'/g, "\\'");
+                    const safeIcon = encodeURIComponent(iconUrl || '');
+                    const btnHtml = isAdded
+                        ? `<button class="btn-ghost" disabled style="padding:6px 12px; font-size:0.8rem; color:#10b981; border:1px solid rgba(16,185,129,0.3);"><i class='bx bx-check'></i> Sudah Ada</button>`
+                        : `<button class="btn-primary" style="padding:6px 14px; font-size:0.8rem;" onclick="window.addPromoDmServerFromScan('${sId}', '${safeName}', ${memberCount}, decodeURIComponent('${safeIcon}'))"><i class='bx bx-plus'></i> Tambahkan</button>`;
+
+                    const tokensList = Array.isArray(g.joinedTokens) && g.joinedTokens.length
+                        ? `<span style="font-size:0.75rem; color:#38bdf8;">• via ${escapeHtml(g.joinedTokens.join(', '))}</span>`
+                        : '';
 
                     return `
-                        <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:10px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 14px; background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:10px;">
                             <div style="display:flex; align-items:center; gap:12px;">
-                                <img src="${iconUrl}" style="width:38px; height:38px; border-radius:10px; object-fit:cover;" onerror="this.src='https://ui-avatars.com/api/?name=DC&background=334155&color=fff'">
+                                <img src="${iconUrl}" style="width:40px; height:40px; border-radius:10px; object-fit:cover;" onerror="this.src='https://ui-avatars.com/api/?name=DC&background=334155&color=fff'">
                                 <div>
-                                    <div style="font-weight:700; font-size:0.92rem;">${escapeHtml(g.name)}</div>
-                                    <div style="font-size:0.75rem; color:var(--text-secondary);">ID: <code>${g.id}</code> ${g.approximate_member_count ? `• ~${g.approximate_member_count} member` : ''}</div>
+                                    <div style="font-weight:700; font-size:0.92rem; color:#fff;">${escapeHtml(sName)}</div>
+                                    <div style="font-size:0.78rem; color:var(--text-secondary); display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:2px;">
+                                        <span>ID: <code>${sId}</code></span>
+                                        ${memberCount ? `<span>• ~${memberCount} member</span>` : ''}
+                                        ${tokensList}
+                                    </div>
                                 </div>
                             </div>
                             <div>${btnHtml}</div>
@@ -4565,7 +4554,7 @@ async function scanPromoDmServers() {
             }
         } else {
             if (container) {
-                container.innerHTML = `<div style="text-align:center; padding:30px; color:#ef4444;">Gagal memindai: ${res.error || 'Unknown'}</div>`;
+                container.innerHTML = `<div style="text-align:center; padding:30px; color:#ef4444;">Gagal memindai: ${res.error || 'Unknown error'}</div>`;
             }
         }
     } catch (err) {
@@ -4575,12 +4564,17 @@ async function scanPromoDmServers() {
     }
 }
 
-async function addPromoDmServerFromScan(guildId, guildName, memberCount) {
+async function addPromoDmServerFromScan(guildId, guildName, memberCount, iconUrl) {
+    if (!guildId || guildId === 'undefined' || guildId === 'null') {
+        window.showToast?.('Server ID tidak valid!', 'error');
+        return;
+    }
+
     try {
         const res = await fetch('/api/promo/dm-servers', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ guildId, guildName, memberCount })
+            body: JSON.stringify({ guildId, guildName, memberCount, icon: iconUrl })
         }).then(r => r.json());
 
         if (res.success) {
@@ -4924,68 +4918,348 @@ async function deletePromoTarget(id, name) {
     }
 }
 
+// ─── Template & Spintax Simulator Engine ────────────────────
+
+function resolveSpintaxClient(str) {
+    if (!str || typeof str !== 'string') return '';
+    let result = str;
+    const regex = /\{([^{}]+)\}/g;
+    let iteration = 0;
+    while (regex.test(result) && iteration < 20) {
+        result = result.replace(regex, (match, choices) => {
+            if (!choices.includes('|')) return match;
+            const options = choices.split('|');
+            return options[Math.floor(Math.random() * options.length)];
+        });
+        iteration++;
+    }
+
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+    const dateStr = now.toLocaleDateString('id-ID');
+    const randomCode = '#MK-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+    const emojis = ['🚀', '🔥', '💎', '📈', '⚡', '🎯', '✨', '🏆', '💡', '⭐', '💰', '👑'];
+    const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+
+    result = result
+        .replace(/\{username\}/gi, 'kawan')
+        .replace(/\{server\}/gi, 'Komunitas Trader VIP')
+        .replace(/\{channel\}/gi, 'vip-signals')
+        .replace(/\{time\}/gi, timeStr)
+        .replace(/\{date\}/gi, dateStr)
+        .replace(/\{random_code\}/gi, randomCode)
+        .replace(/\{random_emoji\}/gi, randomEmoji);
+
+    return result;
+}
+
+function formatDiscordPreview(text) {
+    if (!text) return 'Ketik teks di atas untuk melihat pratinjau pesan Discord.';
+    let html = escapeHtml(text);
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    html = html.replace(/__(.*?)__/g, '<u>$1</u>');
+    html = html.replace(/~~(.*?)~~/g, '<del>$1</del>');
+    html = html.replace(/`([^`]+)`/g, '<code style="background:rgba(0,0,0,0.3); padding:2px 4px; border-radius:4px; font-family:\'JetBrains Mono\',monospace; font-size:0.85em;">$1</code>');
+    html = html.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" style="color:#00aff4; text-decoration:underline;">$1</a>');
+    html = html.replace(/\n/g, '<br>');
+    return html;
+}
+
+function generateRandomSpintaxVariation(showToastAlert = false) {
+    const textarea = document.getElementById('promo-spintax-input');
+    const outputEl = document.getElementById('promo-spintax-output');
+    const timeEl = document.getElementById('promo-preview-time');
+    if (!textarea || !outputEl) return;
+
+    const raw = textarea.value || '';
+    if (!raw.trim()) {
+        outputEl.innerHTML = '<span style="color:var(--text-secondary); font-style:italic;">Ketik teks di atas untuk melihat pratinjau pesan Discord.</span>';
+        return;
+    }
+
+    const resolved = resolveSpintaxClient(raw);
+    outputEl.innerHTML = formatDiscordPreview(resolved);
+
+    if (timeEl) {
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        timeEl.textContent = `Hari ini pukul ${hh}:${mm}`;
+    }
+
+    if (showToastAlert) {
+        window.showToast?.('🎲 Variasi Spintax diacak ulang!', 'info');
+    }
+}
+
+function selectTemplateForEditing(id, showToastMsg = false) {
+    const tpl = (_cachedPromoTemplates || []).find(t => t.id === id);
+    if (!tpl) return;
+
+    _editingTemplateId = tpl.id;
+
+    const nameInput = document.getElementById('promo-template-name-input');
+    const textInput = document.getElementById('promo-spintax-input');
+    const badgeStatus = document.getElementById('promo-template-status-badge');
+    const saveBtnText = document.getElementById('btn-promo-save-template-text');
+
+    if (nameInput) nameInput.value = tpl.name || '';
+    if (textInput) textInput.value = tpl.content || '';
+
+    if (badgeStatus) {
+        badgeStatus.innerHTML = `<i class='bx bx-edit-alt'></i> Mengedit: ${escapeHtml(tpl.name)}`;
+        badgeStatus.style.background = 'rgba(56,189,248,0.15)';
+        badgeStatus.style.color = '#38bdf8';
+    }
+
+    if (saveBtnText) {
+        saveBtnText.textContent = 'Simpan Perubahan Teks';
+    }
+
+    document.querySelectorAll('.promo-template-card').forEach(el => {
+        if (el.dataset.id === id) {
+            el.classList.add('active-template');
+            el.style.border = '2px solid #38bdf8';
+            el.style.background = 'rgba(56, 189, 248, 0.08)';
+        } else {
+            el.classList.remove('active-template');
+            el.style.border = '1px solid var(--border-color)';
+            el.style.background = 'rgba(255,255,255,0.03)';
+        }
+    });
+
+    generateRandomSpintaxVariation(false);
+
+    if (showToastMsg) {
+        window.showToast?.(`Template "${tpl.name}" dimuat ke editor`, 'info');
+    }
+}
+
+function newPromoTemplate() {
+    _editingTemplateId = null;
+
+    const nameInput = document.getElementById('promo-template-name-input');
+    const textInput = document.getElementById('promo-spintax-input');
+    const badgeStatus = document.getElementById('promo-template-status-badge');
+    const saveBtnText = document.getElementById('btn-promo-save-template-text');
+
+    const nextIndex = (_cachedPromoTemplates?.length || 0) + 1;
+    if (nameInput) {
+        nameInput.value = `Template Promosi #${nextIndex}`;
+        nameInput.focus();
+    }
+
+    if (textInput && !textInput.value.trim()) {
+        textInput.value = "{Halo|Hai|Permisi} kak {username}! 🔥\n\n{Mau dapat akses sinyal trading VIP real-time tanpa delay?|Lagi cari komunitas trading dengan akurasi tinggi?}\nJoin channel kami sekarang!\n\n📌 Benefit:\n- Sinyal 24/7 real-time\n- Mirror Discord & Telegram cepat\n- Edukasi & analisis mentor\n\n👉 Info & join: https://t.me/yourlink_here\n{Salam profit!|Good luck!}";
+    }
+
+    if (badgeStatus) {
+        badgeStatus.innerHTML = "<i class='bx bx-plus-circle'></i> Template Baru (Belum Disimpan)";
+        badgeStatus.style.background = 'rgba(16,185,129,0.15)';
+        badgeStatus.style.color = '#10b981';
+    }
+
+    if (saveBtnText) {
+        saveBtnText.textContent = 'Simpan Sebagai Template Baru';
+    }
+
+    document.querySelectorAll('.promo-template-card').forEach(el => {
+        el.classList.remove('active-template');
+        el.style.border = '1px solid var(--border-color)';
+        el.style.background = 'rgba(255,255,255,0.03)';
+    });
+
+    generateRandomSpintaxVariation(false);
+    window.showToast?.('Mode buat template baru aktif. Masukkan nama & teks lalu klik Simpan.', 'info');
+}
+
+async function saveCurrentPromoTemplate() {
+    const nameInput = document.getElementById('promo-template-name-input');
+    const textInput = document.getElementById('promo-spintax-input');
+    const saveBtn = document.getElementById('btn-promo-save-template');
+
+    const name = nameInput ? nameInput.value.trim() : '';
+    const content = textInput ? textInput.value.trim() : '';
+
+    if (!name) {
+        window.showToast?.('Nama template promosi wajib diisi!', 'warning');
+        nameInput?.focus();
+        return;
+    }
+    if (!content) {
+        window.showToast?.('Isi teks promosi tidak boleh kosong!', 'warning');
+        textInput?.focus();
+        return;
+    }
+
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = "<i class='bx bx-loader-alt bx-spin'></i> Menyimpan...";
+    }
+
+    try {
+        if (_editingTemplateId) {
+            const res = await fetch(`/api/promo/templates/${_editingTemplateId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, content })
+            }).then(r => r.json());
+
+            if (res.success) {
+                window.showToast?.(`✅ Teks template "${name}" berhasil disimpan!`, 'success');
+                await loadPromoTemplates();
+                selectTemplateForEditing(_editingTemplateId, false);
+            } else {
+                window.showToast?.('Gagal menyimpan: ' + (res.error || 'Unknown error'), 'error');
+            }
+        } else {
+            const res = await fetch('/api/promo/templates', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, content })
+            }).then(r => r.json());
+
+            if (res.success && res.template) {
+                _editingTemplateId = res.template.id;
+                window.showToast?.(`✅ Template "${name}" berhasil dibuat & disimpan!`, 'success');
+                await loadPromoTemplates();
+                selectTemplateForEditing(_editingTemplateId, false);
+            } else {
+                window.showToast?.('Gagal membuat template: ' + (res.error || 'Unknown error'), 'error');
+            }
+        }
+    } catch (err) {
+        window.showToast?.('Error: ' + err.message, 'error');
+    } finally {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = "<i class='bx bx-save'></i> <span id='btn-promo-save-template-text'>Simpan Perubahan Teks</span>";
+        }
+    }
+}
+
+async function savePromoTemplateAsNew() {
+    const nameInput = document.getElementById('promo-template-name-input');
+    const textInput = document.getElementById('promo-spintax-input');
+    const content = textInput ? textInput.value.trim() : '';
+
+    if (!content) {
+        window.showToast?.('Isi teks promosi tidak boleh kosong!', 'warning');
+        textInput?.focus();
+        return;
+    }
+
+    const currentName = nameInput ? nameInput.value.trim() : 'Template Promosi';
+    const suggestedName = currentName.includes('(Copy)') ? currentName : `${currentName} (Copy)`;
+    const newName = prompt('Masukkan nama untuk template baru ini:', suggestedName);
+    if (!newName || !newName.trim()) return;
+
+    try {
+        const res = await fetch('/api/promo/templates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: newName.trim(), content })
+        }).then(r => r.json());
+
+        if (res.success && res.template) {
+            _editingTemplateId = res.template.id;
+            window.showToast?.(`✅ Template baru "${newName.trim()}" berhasil disimpan!`, 'success');
+            await loadPromoTemplates();
+            selectTemplateForEditing(_editingTemplateId, false);
+        } else {
+            window.showToast?.('Gagal menyimpan: ' + (res.error || 'Unknown error'), 'error');
+        }
+    } catch (err) {
+        window.showToast?.('Error: ' + err.message, 'error');
+    }
+}
+
 async function loadPromoTemplates() {
     try {
         const templates = await fetch('/api/promo/templates').then(r => r.json());
-        _cachedPromoTemplates = templates || [];
+        _cachedPromoTemplates = Array.isArray(templates) ? templates : [];
         const container = document.getElementById('promo-templates-list');
         const badgeCount = document.getElementById('badge-promo-templates');
         if (badgeCount) badgeCount.textContent = _cachedPromoTemplates.length;
 
         if (!container) return;
         if (!_cachedPromoTemplates.length) {
-            container.innerHTML = `<div style="text-align:center; padding:24px; color:var(--text-secondary);">Belum ada template. Klik Tambah Template.</div>`;
+            container.innerHTML = `
+                <div style="text-align:center; padding:28px 16px; color:var(--text-secondary); background:rgba(255,255,255,0.02); border:1px dashed var(--border-color); border-radius:10px;">
+                    <i class='bx bx-file-blank' style="font-size:2rem; color:var(--text-secondary); display:block; margin-bottom:6px;"></i>
+                    Belum ada template promosi. Klik "Buat Template Baru" untuk menambahkan.
+                </div>
+            `;
             return;
         }
 
-        const inputSpintax = document.getElementById('promo-spintax-input');
-        if (inputSpintax && !inputSpintax.value && _cachedPromoTemplates[0]) {
-            inputSpintax.value = _cachedPromoTemplates[0].content;
-            document.getElementById('btn-promo-test-spintax')?.click();
+        if (!_editingTemplateId || !_cachedPromoTemplates.some(t => t.id === _editingTemplateId)) {
+            _editingTemplateId = _cachedPromoTemplates[0].id;
         }
 
         container.innerHTML = _cachedPromoTemplates.map(tpl => {
+            const isActive = tpl.id === _editingTemplateId;
             const previewSnippet = tpl.content.substring(0, 110) + (tpl.content.length > 110 ? '...' : '');
+            const borderStyle = isActive ? 'border: 2px solid #38bdf8; background: rgba(56, 189, 248, 0.08);' : 'border: 1px solid var(--border-color); background: rgba(255,255,255,0.03);';
+            const activeIndicator = isActive ? `<span class="badge" style="background:#38bdf8; color:#0f172a; font-weight:700; font-size:0.7rem;"><i class='bx bx-check'></i> Sedang Diedit</span>` : '';
+
             return `
-                <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:10px; padding:12px 14px; display:flex; flex-direction:column; gap:8px;">
+                <div class="promo-template-card ${isActive ? 'active-template' : ''}" data-id="${tpl.id}" style="${borderStyle} border-radius:10px; padding:12px 14px; display:flex; flex-direction:column; gap:8px; cursor:pointer; transition:all 0.2s;" onclick="window.selectTemplateForEditing('${tpl.id}', true)">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-weight:600; font-size:0.92rem; color:var(--text-primary);">${escapeHtml(tpl.name)}</span>
-                        <div style="display:flex; gap:8px; align-items:center;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="font-weight:700; font-size:0.92rem; color:var(--text-primary);">${escapeHtml(tpl.name)}</span>
+                            ${activeIndicator}
+                        </div>
+                        <div style="display:flex; gap:6px; align-items:center;">
                             <span class="badge" style="background:rgba(168,85,247,0.15); color:#c084fc; font-size:0.75rem;">
                                 Dipakai: ${tpl.useCount || 0}x
                             </span>
-                            <button class="btn-icon" style="width:28px; height:28px; font-size:0.85rem;" title="Muat ke Simulator" onclick="window.loadTemplateToSimulator('${tpl.id}')">
+                            <button class="btn-icon" style="width:28px; height:28px; font-size:0.85rem;" title="Edit Teks Template" onclick="event.stopPropagation(); window.selectTemplateForEditing('${tpl.id}', true)">
                                 <i class='bx bx-edit-alt'></i>
                             </button>
-                            <button class="btn-icon" style="width:28px; height:28px; font-size:0.85rem; color:#ef4444;" title="Hapus Template" onclick="window.deletePromoTemplate('${tpl.id}', '${escapeHtml(tpl.name)}')">
+                            <button class="btn-icon" style="width:28px; height:28px; font-size:0.85rem; color:#ef4444;" title="Hapus Template" onclick="event.stopPropagation(); window.deletePromoTemplate('${tpl.id}', '${escapeHtml(tpl.name)}')">
                                 <i class='bx bx-trash'></i>
                             </button>
                         </div>
                     </div>
-                    <div style="font-size:0.82rem; color:var(--text-secondary); line-height:1.4; white-space:pre-wrap; font-family:'JetBrains Mono', monospace; background:rgba(0,0,0,0.2); padding:8px 10px; border-radius:6px;">${escapeHtml(previewSnippet)}</div>
+                    <div style="font-size:0.82rem; color:var(--text-secondary); line-height:1.4; white-space:pre-wrap; font-family:'JetBrains Mono', monospace; background:rgba(0,0,0,0.25); padding:8px 10px; border-radius:6px; pointer-events:none;">${escapeHtml(previewSnippet)}</div>
                 </div>
             `;
         }).join('');
+
+        const activeTpl = _cachedPromoTemplates.find(t => t.id === _editingTemplateId);
+        if (activeTpl) {
+            const nameInput = document.getElementById('promo-template-name-input');
+            const textInput = document.getElementById('promo-spintax-input');
+            if (nameInput && !nameInput.value) nameInput.value = activeTpl.name;
+            if (textInput && !textInput.value) textInput.value = activeTpl.content;
+            generateRandomSpintaxVariation(false);
+        }
     } catch (_) {}
 }
 
 function loadTemplateToSimulator(id) {
-    const tpl = _cachedPromoTemplates.find(t => t.id === id);
-    if (!tpl) return;
-    const input = document.getElementById('promo-spintax-input');
-    if (input) {
-        input.value = tpl.content;
-        window.showToast?.(`Template "${tpl.name}" dimuat ke simulator`, 'info');
-        document.getElementById('btn-promo-test-spintax')?.click();
-    }
+    selectTemplateForEditing(id, true);
 }
 
 async function deletePromoTemplate(id, name) {
+    if ((_cachedPromoTemplates || []).length <= 1) {
+        window.showToast?.('Minimal harus ada 1 template promosi!', 'warning');
+        return;
+    }
     if (!confirm(`Hapus template "${name}"?`)) return;
     try {
-        await fetch(`/api/promo/templates/${id}`, { method: 'DELETE' });
-        window.showToast?.('Template dihapus', 'warning');
-        loadPromoTemplates();
+        const res = await fetch(`/api/promo/templates/${id}`, { method: 'DELETE' }).then(r => r.json());
+        if (res.success) {
+            window.showToast?.('Template berhasil dihapus', 'warning');
+            if (_editingTemplateId === id) {
+                _editingTemplateId = null;
+            }
+            await loadPromoTemplates();
+        } else {
+            window.showToast?.('Gagal menghapus: ' + (res.error || 'Error'), 'error');
+        }
     } catch (err) {
         window.showToast?.('Error: ' + err.message, 'error');
     }
@@ -5243,6 +5517,11 @@ window.loadPromoTargets = loadPromoTargets;
 window.togglePromoTarget = togglePromoTarget;
 window.deletePromoTarget = deletePromoTarget;
 window.loadPromoTemplates = loadPromoTemplates;
+window.selectTemplateForEditing = selectTemplateForEditing;
+window.newPromoTemplate = newPromoTemplate;
+window.saveCurrentPromoTemplate = saveCurrentPromoTemplate;
+window.savePromoTemplateAsNew = savePromoTemplateAsNew;
+window.generateRandomSpintaxVariation = generateRandomSpintaxVariation;
 window.loadTemplateToSimulator = loadTemplateToSimulator;
 window.deletePromoTemplate = deletePromoTemplate;
 window.loadPromoSettings = loadPromoSettings;
