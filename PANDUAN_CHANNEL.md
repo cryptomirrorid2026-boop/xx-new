@@ -191,3 +191,30 @@ Kini kamu tidak perlu lagi membuat channel, membuat webhook, dan mengisi ID chan
    - Tersedia tombol **Mute All**, **Rename**, dan **Delete Category** untuk menghapus seluruh channel dalam satu kelas sekaligus dengan sekali klik!
    - Tombol **"Lengkapi Webhook Kosong"** untuk memindai dan memperbaiki webhook yang belum terpasang secara instan.
 
+---
+
+## 🚀 FITUR BARU: AUTO-PROMO & MARKETING BOT MULTI-TOKEN (ANTI-BAN)
+
+Fitur marketing profesional untuk mempromosikan mirror kelas/layanan Anda ke banyak server Discord sekaligus secara otomatis, aman, dan tanpa risiko terkena ban.
+
+### 🛡️ Fitur Keamanan Anti-Ban Mutakhir:
+1. **Multi-Account Multitasking Pool:**
+   - Mendukung banyak akun token Discord (5, 10, 20+ akun).
+   - Beban pengiriman dibagi rata secara **Round-Robin** sehingga tidak ada 1 akun yang mengirim terlalu banyak.
+   - Bisa import langsung dari token mirror bot atau masukkan akun cadangan baru.
+2. **Recursive Spintax Engine `{Pilihan 1|Pilihan 2|Pilihan 3}`:**
+   - Setiap pesan diacak variasinya secara otomatis sehingga hash pesan tidak pernah sama.
+   - Variabel dinamis: `{server}`, `{channel}`, `{time}`, `{date}`, `{random_code}`, `{random_emoji}`.
+3. **Delay Acak & Human Jitter:**
+   - Jeda antar pesan diacak (contoh: 90 s.d. 240 detik), bukan jeda statis yang mudah ditandai bot detektor Discord.
+4. **Human Typing Emulation:**
+   - Bot otomatis memicu status *"Typing..."* selama 3–7 detik sebelum pesan diposting layaknya manusia mengetik.
+5. **Safe Quota Guard (Per-Account & Per-Channel):**
+   - Batas per jam (contoh: maks 6 pesan/jam per akun).
+   - Batas per hari (contoh: maks 30 pesan/hari per akun).
+   - Cooldown channel (contoh: tidak posting ke channel yang sama sebelum 120 menit).
+6. **Smart Rate-Limit (429) Auto-Pause:**
+   - Jika Discord mengembalikan status 429, bot membaca `retry_after`, mengistirahatkan akun tersebut sementara, dan melanjutkan promosi dengan akun sehat lainnya tanpa error.
+7. **Auto-Channel Scanner (Discovery):**
+   - Pindai otomatis semua channel di server yang dimasuki akun dan hanya pilih channel yang memiliki izin kirim pesan.
+

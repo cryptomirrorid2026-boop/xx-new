@@ -24,6 +24,7 @@ const blurManager       = require('./blurManager');
 const wordFilterManager = require('./wordFilterManager');
 const discordBotPool    = require('./discordBotPool');
 const autoLinkManager   = require('./autoLinkManager');
+const promoManager      = require('./promoManager');
 
 // ─── Multer: Watermark upload ─────────────────────────────────
 const storage = multer.diskStorage({
@@ -87,6 +88,7 @@ function pushEvent(type, message) {
 
 // Hubungkan autoLinkManager ke SSE activity pusher
 autoLinkManager.setPushEventFn(pushEvent);
+promoManager.setPushEventFn(pushEvent);
 
 // ─── Main ────────────────────────────────────────────────────
 function startWebServer(tgManager, channelMap, port = 5080, tg2dcStore = null) {
@@ -938,6 +940,122 @@ function startWebServer(tgManager, channelMap, port = 5080, tg2dcStore = null) {
   // GET: Daftar pattern aktif
   app.get('/api/antispam/patterns', (_, res) => {
     res.json(spamPatternDetect.listPatterns());
+  });
+
+  // ── Auto-Promo & Marketing Endpoints ─────────────────────────
+  app.get('/api/promo/status', (_, res) => res.json(promoManager.getStatus()));
+  app.post('/api/promo/start', (_, res) => res.json(promoManager.start()));
+  app.post('/api/promo/pause', (_, res) => res.json(promoManager.pause()));
+  app.post('/api/promo/stop', (_, res) => res.json(promoManager.stop()));
+
+  app.get('/api/promo/settings', (_, res) => res.json(promoManager.getSettings()));
+  app.post('/api/promo/settings', (req, res) => {
+    try {
+      const updated = promoManager.updateSettings(req.body);
+      res.json({ success: true, settings: updated });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/promo/tokens', (_, res) => res.json(promoManager.getTokens()));
+  app.post('/api/promo/tokens', async (req, res) => {
+    const { token, name } = req.body;
+    if (!token) return res.status(400).json({ error: 'Token Discord wajib diisi' });
+    try {
+      const tok = await promoManager.addToken(token, name);
+      res.json({ success: true, token: tok });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+  app.delete('/api/promo/tokens/:id', async (req, res) => {
+    const ok = await promoManager.removeToken(req.params.id);
+    if (ok) res.json({ success: true });
+    else res.status(404).json({ error: 'Token tidak ditemukan' });
+  });
+  app.post('/api/promo/tokens/:id/toggle', (req, res) => {
+    const { enabled } = req.body;
+    const ok = promoManager.toggleToken(req.params.id, enabled !== false);
+    if (ok) res.json({ success: true });
+    else res.status(404).json({ error: 'Token tidak ditemukan' });
+  });
+  app.post('/api/promo/tokens/import', (_, res) => {
+    const result = promoManager.importFromMirrorBot();
+    res.json({ success: true, ...result });
+  });
+
+  app.get('/api/promo/targets', (_, res) => res.json(promoManager.getTargets()));
+  app.post('/api/promo/targets', (req, res) => {
+    try {
+      const target = promoManager.addTarget(req.body);
+      res.json({ success: true, target });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+  app.delete('/api/promo/targets/:id', (req, res) => {
+    const ok = promoManager.removeTarget(req.params.id);
+    if (ok) res.json({ success: true });
+    else res.status(404).json({ error: 'Target tidak ditemukan' });
+  });
+  app.post('/api/promo/targets/:id/toggle', (req, res) => {
+    const { enabled } = req.body;
+    const ok = promoManager.toggleTarget(req.params.id, enabled !== false);
+    if (ok) res.json({ success: true });
+    else res.status(404).json({ error: 'Target tidak ditemukan' });
+  });
+  app.post('/api/promo/targets/discover', async (_, res) => {
+    try {
+      const list = await promoManager.discoverChannels();
+      res.json({ success: true, channels: list });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/promo/templates', (_, res) => res.json(promoManager.getTemplates()));
+  app.post('/api/promo/templates', (req, res) => {
+    try {
+      const tpl = promoManager.addTemplate(req.body);
+      res.json({ success: true, template: tpl });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+  app.put('/api/promo/templates/:id', (req, res) => {
+    try {
+      const tpl = promoManager.updateTemplate(req.params.id, req.body);
+      res.json({ success: true, template: tpl });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+  app.delete('/api/promo/templates/:id', (req, res) => {
+    const ok = promoManager.removeTemplate(req.params.id);
+    if (ok) res.json({ success: true });
+    else res.status(404).json({ error: 'Template tidak ditemukan' });
+  });
+  app.post('/api/promo/templates/preview', (req, res) => {
+    const { content, meta } = req.body;
+    const preview = promoManager.previewTemplate(content, meta);
+    res.json({ success: true, preview });
+  });
+
+  app.post('/api/promo/test-send', async (req, res) => {
+    const { tokenId, channelId, templateId } = req.body;
+    try {
+      const result = await promoManager.sendTestMessage(tokenId, channelId, templateId);
+      res.json(result);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/promo/logs', (_, res) => res.json(promoManager.getLogs()));
+  app.post('/api/promo/logs/clear', (_, res) => {
+    promoManager.clearLogs();
+    res.json({ success: true });
   });
 
   // ── Restart ──────────────────────────────────────────────────

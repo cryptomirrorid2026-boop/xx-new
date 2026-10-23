@@ -86,6 +86,15 @@
                     </a>
                 </li>
 
+                <li class="nav-category">MARKETING & PROMO</li>
+                <li>
+                    <a href="#" data-target="promo" id="nav-promo">
+                        <i class='bx bx-rocket'></i>
+                        <span class="links_name">Auto-Promo Bot</span>
+                        <span class="nav-badge" id="promo-status-badge" style="display:none; background: #10b981;">ON</span>
+                    </a>
+                </li>
+
                 <li class="nav-category">BANTUAN & PANDUAN</li>
                 <li>
                     <a href="#" data-target="guide" id="nav-guide" style="color:#a855f7;">
@@ -1291,7 +1300,389 @@
                     </div>
                 </div>
 
-            </div>
+                <!-- ============================================================ -->
+                <!-- AUTO-PROMO & MARKETING BOT SECTION -->
+                <!-- ============================================================ -->
+                <div id="section-promo" class="section">
+                    <!-- Section Header -->
+                    <div class="section-header" style="margin-bottom:20px; flex-wrap:wrap; gap:16px;">
+                        <div>
+                            <h2 style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+                                <i class='bx bx-rocket' style="color:#38bdf8;"></i> Auto-Promo & Marketing Multi-Token
+                            </h2>
+                            <p class="subtitle" style="margin:0;">
+                                Promosikan mirror kelas Anda secara otomatis ke berbagai server Discord dengan rotasi banyak akun, spintax cerdas, dan sistem anti-ban mutakhir.
+                            </p>
+                        </div>
+                        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <button id="btn-promo-start" class="btn-success" style="padding:9px 18px;">
+                                <i class='bx bx-play'></i> <span>Mulai Promosi</span>
+                            </button>
+                            <button id="btn-promo-pause" class="btn-ghost" style="border-color:#f59e0b;color:#f59e0b;padding:9px 16px;">
+                                <i class='bx bx-pause'></i> <span>Jeda</span>
+                            </button>
+                            <button id="btn-promo-stop" class="btn-danger-solid" style="padding:9px 16px;">
+                                <i class='bx bx-stop'></i> <span>Hentikan</span>
+                            </button>
+                            <button id="btn-promo-test-open" class="btn-primary" style="background:linear-gradient(135deg,#6366f1,#8b5cf6); border:none; padding:9px 18px;">
+                                <i class='bx bx-paper-plane'></i> <span>Tes Kirim Cepat</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Status & Countdown Banner -->
+                    <div class="promo-status-banner">
+                        <div class="promo-status-info">
+                            <span id="promo-status-pill" class="promo-status-badge stopped">
+                                <i class='bx bx-stop-circle'></i> <span id="promo-status-text">STOPPED</span>
+                            </span>
+                            <div class="promo-countdown-pill">
+                                <i class='bx bx-time-five' style="color:#38bdf8;"></i>
+                                <span>Kirim berikutnya: <b id="promo-countdown-timer">--:--</b></span>
+                                <span style="opacity:0.3;">|</span>
+                                <span>Akun: <b id="promo-next-account">-</b></span>
+                                <span style="opacity:0.3;">|</span>
+                                <span>Target: <b id="promo-next-target">-</b></span>
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <button id="btn-promo-refresh" class="btn-icon-text" title="Refresh Status">
+                                <i class='bx bx-refresh'></i> <span>Refresh</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Metrics Overview Boxes -->
+                    <div class="overview-boxes" style="margin-bottom:24px;">
+                        <div class="box">
+                            <div class="right-side">
+                                <div class="box-topic">Status Kampanye</div>
+                                <div class="number" id="promo-stat-status" style="font-size:22px; text-transform:uppercase;">OFF</div>
+                                <div class="indicator" id="promo-stat-mode"><i class='bx bx-sync'></i> Mode Round-Robin</div>
+                            </div>
+                            <div class="cart" style="background:rgba(56,189,248,0.1); color:#38bdf8;"><i class='bx bx-broadcast'></i></div>
+                        </div>
+                        <div class="box">
+                            <div class="right-side">
+                                <div class="box-topic">Pool Akun Token</div>
+                                <div class="number" id="promo-stat-tokens">0 / 0</div>
+                                <div class="indicator" id="promo-stat-tokens-sub"><i class='bx bx-check-circle'></i> 0 akun online</div>
+                            </div>
+                            <div class="cart two"><i class='bx bx-user-check'></i></div>
+                        </div>
+                        <div class="box">
+                            <div class="right-side">
+                                <div class="box-topic">Target Channels</div>
+                                <div class="number" id="promo-stat-targets">0</div>
+                                <div class="indicator" id="promo-stat-targets-sub"><i class='bx bx-target-lock'></i> 0 channel aktif</div>
+                            </div>
+                            <div class="cart four"><i class='bx bx-hash'></i></div>
+                        </div>
+                        <div class="box">
+                            <div class="right-side">
+                                <div class="box-topic">Pesan Terkirim</div>
+                                <div class="number" id="promo-stat-sent">0</div>
+                                <div class="indicator" id="promo-stat-rate"><i class='bx bx-check-double'></i> Hari ini: 0 pesan</div>
+                            </div>
+                            <div class="cart three"><i class='bx bx-send'></i></div>
+                        </div>
+                    </div>
+
+                    <!-- Subtabs Navigation -->
+                    <div class="promo-tabs-nav">
+                        <button class="promo-tab-btn active" data-tab="promo-tokens">
+                            <i class='bx bx-user'></i> <span>Akun Token (Pool)</span>
+                            <span class="nav-badge" id="badge-promo-tokens" style="background:#3b82f6; margin-left:4px;">0</span>
+                        </button>
+                        <button class="promo-tab-btn" data-tab="promo-targets">
+                            <i class='bx bx-target-lock'></i> <span>Target Channel & Server</span>
+                            <span class="nav-badge" id="badge-promo-targets" style="background:#10b981; margin-left:4px;">0</span>
+                        </button>
+                        <button class="promo-tab-btn" data-tab="promo-templates">
+                            <i class='bx bx-edit'></i> <span>Template & Spintax</span>
+                            <span class="nav-badge" id="badge-promo-templates" style="background:#a855f7; margin-left:4px;">0</span>
+                        </button>
+                        <button class="promo-tab-btn" data-tab="promo-settings">
+                            <i class='bx bx-shield-quarter'></i> <span>Anti-Ban & Keamanan</span>
+                        </button>
+                        <button class="promo-tab-btn" data-tab="promo-logs">
+                            <i class='bx bx-list-ul'></i> <span>Live Log & Riwayat</span>
+                        </button>
+                    </div>
+
+                    <!-- TAB 1: AKUN TOKEN POOL -->
+                    <div id="tab-promo-tokens" class="promo-tab-content active">
+                        <div class="glass-card" style="margin-bottom:20px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px;">
+                                <div>
+                                    <h3 style="margin:0;"><i class='bx bx-group'></i> Multi-Account Token Pool</h3>
+                                    <p class="subtitle" style="margin:4px 0 0;">Akun Discord yang digunakan untuk mengirim pesan promosi secara bergiliran (rotasi otomatis).</p>
+                                </div>
+                                <div style="display:flex; gap:10px;">
+                                    <button id="btn-promo-import-token" class="btn-ghost" title="Ambil token yang sudah ada di mirror bot">
+                                        <i class='bx bx-download'></i> <span>Import Token dari Mirror Bot</span>
+                                    </button>
+                                    <button id="btn-promo-modal-token" class="btn-primary">
+                                        <i class='bx bx-plus'></i> <span>Tambah Akun Token Baru</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="promo-tokens-container" class="promo-token-grid">
+                                <!-- Filled by JS -->
+                                <div style="grid-column: 1/-1; text-align:center; padding:30px; color:var(--text-secondary);">
+                                    Memuat daftar akun token...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 2: TARGET CHANNEL & SERVER -->
+                    <div id="tab-promo-targets" class="promo-tab-content">
+                        <div class="glass-card">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
+                                <div>
+                                    <h3 style="margin:0;"><i class='bx bx-bullseye'></i> Target Channel Discord</h3>
+                                    <p class="subtitle" style="margin:4px 0 0;">Daftar channel server Discord yang menjadi target pengiriman promosi.</p>
+                                </div>
+                                <div style="display:flex; gap:10px;">
+                                    <button id="btn-promo-modal-discover" class="btn-primary" style="background:linear-gradient(135deg, #0ea5e9, #2563eb); border:none;">
+                                        <i class='bx bx-radar'></i> <span>Temukan Channel Otomatis (Scan Server)</span>
+                                    </button>
+                                    <button id="btn-promo-modal-target" class="btn-success">
+                                        <i class='bx bx-plus'></i> <span>Tambah Target Manual</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="table-responsive">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Server / Guild</th>
+                                            <th>Channel Target</th>
+                                            <th>Channel ID</th>
+                                            <th>Cooldown Status</th>
+                                            <th>Total Terkirim</th>
+                                            <th>Status</th>
+                                            <th>Aksi</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="promo-targets-tbody">
+                                        <!-- Filled by JS -->
+                                        <tr><td colspan="7" style="text-align:center; color:var(--text-secondary); padding:24px;">Memuat target channels...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 3: TEMPLATE & SPINTAX ENGINE -->
+                    <div id="tab-promo-templates" class="promo-tab-content">
+                        <div style="display:grid; grid-template-columns: 1.1fr 0.9fr; gap:20px;">
+                            <!-- Kolom Kiri: Daftar Template -->
+                            <div class="glass-card">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+                                    <h3 style="margin:0;"><i class='bx bx-file'></i> Template Pesan Promosi</h3>
+                                    <button id="btn-promo-new-template" class="btn-primary" style="padding:6px 14px; font-size:0.85rem;">
+                                        <i class='bx bx-plus'></i> Tambah Template
+                                    </button>
+                                </div>
+                                <p class="subtitle" style="margin-bottom:16px;">Bot akan merotasi template aktif secara acak atau berurutan. Format spintax <code>{opsi1|opsi2}</code> akan diacak otomatis setiap pesan dikirim.</p>
+                                
+                                <div id="promo-templates-list" style="display:flex; flex-direction:column; gap:12px;">
+                                    <!-- Filled by JS -->
+                                </div>
+                            </div>
+
+                            <!-- Kolom Kanan: Live Spintax Tester & Previewer -->
+                            <div class="glass-card" style="border-left:4px solid #38bdf8;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                                    <h3 style="margin:0;"><i class='bx bx-test-tube' style="color:#38bdf8;"></i> Simulator & Spintax Tester</h3>
+                                    <button id="btn-promo-test-spintax" class="btn-icon-text" style="color:#38bdf8; border-color:rgba(56,189,248,0.3);">
+                                        <i class='bx bx-shuffle'></i> <span>Generate Variasi Acak</span>
+                                    </button>
+                                </div>
+                                <p class="subtitle" style="margin-bottom:12px;">Klik tag pembantu di bawah untuk menyisipkan ke pesan:</p>
+                                
+                                <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;">
+                                    <span class="tag-chip" data-tag="{server}">🏷️ {server}</span>
+                                    <span class="tag-chip" data-tag="{channel}">#️⃣ {channel}</span>
+                                    <span class="tag-chip" data-tag="{time}">⏰ {time}</span>
+                                    <span class="tag-chip" data-tag="{date}">📅 {date}</span>
+                                    <span class="tag-chip" data-tag="{random_code}">🔑 {random_code}</span>
+                                    <span class="tag-chip" data-tag="{random_emoji}">✨ {random_emoji}</span>
+                                    <span class="tag-chip" data-tag="{Halo|Hai|Permisi}">🔀 Spintax Contoh</span>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom:12px;">
+                                    <label>Input Template Teks Spintax:</label>
+                                    <textarea id="promo-spintax-input" class="form-control" rows="6" style="font-size:0.86rem; line-height:1.5; font-family:'JetBrains Mono', monospace;" placeholder="Ketik teks promosi dengan format spintax {Opsi 1|Opsi 2|Opsi 3}..."></textarea>
+                                </div>
+
+                                <div style="margin-top:10px;">
+                                    <label style="font-size:0.82rem; font-weight:600; color:var(--text-secondary); margin-bottom:6px; display:block;">Pratinjau Nyata Pesan di Discord:</label>
+                                    <div class="discord-preview-box">
+                                        <div class="discord-preview-header">
+                                            <span style="font-weight:600; color:#fff;" id="promo-preview-author">Akun Marketing Discord</span>
+                                            <span class="discord-bot-badge">USER</span>
+                                            <span style="font-size:0.75rem; color:#949ba4;" id="promo-preview-time">Hari ini pukul 12:00</span>
+                                        </div>
+                                        <div class="discord-preview-body" id="promo-spintax-output">
+                                            Klik tombol "Generate Variasi Acak" untuk melihat pratinjau pesan unik.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 4: ANTI-BAN & KEAMANAN -->
+                    <div id="tab-promo-settings" class="promo-tab-content">
+                        <form id="form-promo-settings">
+                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:20px; margin-bottom:20px;">
+                                <!-- Delay Acak (Human Jitter) -->
+                                <div class="glass-card">
+                                    <h3 style="display:flex;align-items:center;gap:8px;font-size:1.05rem;margin-bottom:12px;">
+                                        <i class='bx bx-timer' style="color:#f59e0b;"></i> Delay Acak & Jitter (Anti-Deteksi)
+                                    </h3>
+                                    <p class="subtitle" style="margin-bottom:16px;">Setiap pengiriman pesan menggunakan jeda acak antara batas minimum dan maksimum untuk meniru perilaku manusia asli.</p>
+                                    
+                                    <div class="form-grid">
+                                        <div class="form-group">
+                                            <label>Min Delay (Detik)</label>
+                                            <input type="number" id="setting-delayMinSec" class="form-control" min="30" max="1800" value="90">
+                                            <div class="form-hint">Disarankan: min 60–90 detik</div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Max Delay (Detik)</label>
+                                            <input type="number" id="setting-delayMaxSec" class="form-control" min="60" max="3600" value="240">
+                                            <div class="form-hint">Disarankan: 180–300 detik</div>
+                                        </div>
+                                    </div>
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label>Mode Rotasi Akun & Target</label>
+                                        <select id="setting-rotationMode" class="form-control">
+                                            <option value="round-robin">Round-Robin (Bergiliran Rata 1 per 1)</option>
+                                            <option value="random">Random Acak (Beban Terdistribusi)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <!-- Batas Kuota Akun (Anti-Flagging) -->
+                                <div class="glass-card">
+                                    <h3 style="display:flex;align-items:center;gap:8px;font-size:1.05rem;margin-bottom:12px;">
+                                        <i class='bx bx-shield' style="color:#10b981;"></i> Batas Kuota Akun (Safe Quotas)
+                                    </h3>
+                                    <p class="subtitle" style="margin-bottom:16px;">Mencegah satu akun diblokir karena terlalu aktif mengirim pesan di Discord.</p>
+                                    
+                                    <div class="form-grid">
+                                        <div class="form-group">
+                                            <label>Maks Pesan per Jam (per Akun)</label>
+                                            <input type="number" id="setting-hourlyLimitPerToken" class="form-control" min="1" max="50" value="6">
+                                            <div class="form-hint">Aman: 5–8 pesan/jam</div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Maks Pesan per Hari (per Akun)</label>
+                                            <input type="number" id="setting-dailyLimitPerToken" class="form-control" min="5" max="300" value="30">
+                                            <div class="form-hint">Aman: 25–40 pesan/hari</div>
+                                        </div>
+                                    </div>
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label>Cooldown Channel yang Sama (Menit)</label>
+                                        <input type="number" id="setting-channelCooldownMin" class="form-control" min="10" max="1440" value="120">
+                                        <div class="form-hint">Jarak waktu sebelum posting lagi di channel yang sama</div>
+                                    </div>
+                                </div>
+
+                                <!-- Simulasi Manusia & Jam Kerja -->
+                                <div class="glass-card">
+                                    <h3 style="display:flex;align-items:center;gap:8px;font-size:1.05rem;margin-bottom:12px;">
+                                        <i class='bx bx-user-voice' style="color:#6366f1;"></i> Human Typing & Jam Kerja
+                                    </h3>
+                                    <p class="subtitle" style="margin-bottom:16px;">Emulasi mengetik sebelum pesan terkirim dan penjadwalan istirahat malam hari.</p>
+                                    
+                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; padding:10px 14px; background:rgba(255,255,255,0.03); border-radius:8px; border:1px solid var(--border-color);">
+                                        <div>
+                                            <div style="font-weight:600; font-size:0.9rem;">Simulasi Mengetik (Typing Status)</div>
+                                            <div style="font-size:0.78rem; color:var(--text-secondary);">Kirim status "Typing..." 3–7 detik sebelum pesan diposting</div>
+                                        </div>
+                                        <label class="switch">
+                                            <input type="checkbox" id="setting-simulateTyping" checked>
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
+
+                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding:10px 14px; background:rgba(255,255,255,0.03); border-radius:8px; border:1px solid var(--border-color);">
+                                        <div>
+                                            <div style="font-weight:600; font-size:0.9rem;">Jadwal Jam Kerja Aktif</div>
+                                            <div style="font-size:0.78rem; color:var(--text-secondary);">Hanya kirim pada siang/malam, istirahat saat larut malam</div>
+                                        </div>
+                                        <label class="switch">
+                                            <input type="checkbox" id="setting-workingHoursEnabled">
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
+
+                                    <div class="form-grid" id="promo-working-hours-grid" style="display:none;">
+                                        <div class="form-group" style="margin-bottom:0;">
+                                            <label>Jam Mulai (WIB)</label>
+                                            <input type="number" id="setting-workingHoursStart" class="form-control" min="0" max="23" value="8">
+                                        </div>
+                                        <div class="form-group" style="margin-bottom:0;">
+                                            <label>Jam Selesai (WIB)</label>
+                                            <input type="number" id="setting-workingHoursEnd" class="form-control" min="0" max="23" value="23">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style="display:flex; justify-content:flex-end; gap:12px;">
+                                <button type="submit" class="btn-success" style="padding:10px 24px;">
+                                    <i class='bx bx-save'></i> Simpan Pengaturan Anti-Ban
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- TAB 5: LIVE LOGS & RIWAYAT -->
+                    <div id="tab-promo-logs" class="promo-tab-content">
+                        <div class="glass-card">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
+                                <div style="display:flex; align-items:center; gap:12px;">
+                                    <h3 style="margin:0;"><i class='bx bx-history'></i> Riwayat Pengiriman Promosi</h3>
+                                    <select id="promo-log-filter" class="form-control" style="width:160px; padding:6px 12px; font-size:0.85rem;">
+                                        <option value="ALL">Semua Log</option>
+                                        <option value="SUCCESS">Hanya Berhasil</option>
+                                        <option value="RATE_LIMITED">Hanya Rate Limit</option>
+                                        <option value="FAILED">Hanya Gagal</option>
+                                    </select>
+                                </div>
+                                <button id="btn-promo-clear-logs" class="btn-danger-soft">
+                                    <i class='bx bx-trash'></i> Bersihkan Riwayat Log
+                                </button>
+                            </div>
+
+                            <div class="table-responsive">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Waktu</th>
+                                            <th>Status</th>
+                                            <th>Akun Pengirim</th>
+                                            <th>Target Server & Channel</th>
+                                            <th>Cuplikan Pesan</th>
+                                            <th>Detail / Catatan</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="promo-logs-tbody">
+                                        <!-- Filled by JS -->
+                                        <tr><td colspan="6" style="text-align:center; color:var(--text-secondary); padding:24px;">Belum ada riwayat aktivitas promosi.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
         </section>
     </div>
 
@@ -1834,6 +2225,153 @@
                 <button type="button" class="btn-ghost close-modal" data-modal="modal-add-blur" style="margin-right:auto;">Cancel</button>
                 <button id="btn-confirm-add-blur" class="btn-primary"><i class='bx bx-plus'></i> Tambah & Buka Editor</button>
             </div>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- AUTO-PROMO MARKETING MODALS -->
+    <!-- ============================================================ -->
+
+    <!-- Modal Add Promo Token -->
+    <div id="modal-promo-add-token" class="modal" role="dialog" aria-modal="true">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header">
+                <h2><i class='bx bx-key' style="color:#38bdf8;"></i> Tambah Akun Token Discord</h2>
+                <span class="close-modal" data-modal="modal-promo-add-token">&times;</span>
+            </div>
+            <form id="form-promo-add-token">
+                <div class="modal-body">
+                    <p class="subtitle" style="margin-top:0; margin-bottom:14px;">Masukkan Discord User Token yang ingin digunakan untuk promosi.</p>
+                    <div class="form-group">
+                        <label>Nama Akun / Catatan (Opsional)</label>
+                        <input type="text" id="promo-input-token-name" class="form-control" placeholder="e.g. Akun Cadangan #1">
+                    </div>
+                    <div class="form-group" style="margin-bottom:6px;">
+                        <label>Discord Token <span class="req-star">*</span></label>
+                        <div style="position:relative;">
+                            <input type="password" id="promo-input-token-val" class="form-control" required placeholder="Paste user token Discord..." style="padding-right:40px;">
+                            <i id="btn-toggle-promo-token" class='bx bx-show' style="position:absolute; right:12px; top:50%; transform:translateY(-50%); cursor:pointer; color:var(--text-secondary);"></i>
+                        </div>
+                    </div>
+                    <div style="font-size:0.78rem; color:#94a3b8; line-height:1.45;">
+                        <i class='bx bx-info-circle' style="color:#38bdf8;"></i> Token akun pengguna disimpan lokal di server Anda dan dihubungkan secara otomatis.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-ghost close-modal" data-modal="modal-promo-add-token">Batal</button>
+                    <button type="submit" class="btn-primary" id="btn-save-promo-token"><i class='bx bx-check'></i> Simpan & Hubungkan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Add Target Channel Manual -->
+    <div id="modal-promo-add-target" class="modal" role="dialog" aria-modal="true">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header">
+                <h2><i class='bx bx-target-lock' style="color:#10b981;"></i> Tambah Target Channel Manual</h2>
+                <span class="close-modal" data-modal="modal-promo-add-target">&times;</span>
+            </div>
+            <form id="form-promo-add-target">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Discord Channel ID <span class="req-star">*</span></label>
+                        <input type="text" id="promo-target-chid" class="form-control" required placeholder="e.g. 119876543210987654">
+                        <div class="form-hint">Salin ID Channel teks tempat Anda ingin mempromosikan pesan.</div>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Nama Channel (Opsional)</label>
+                            <input type="text" id="promo-target-chname" class="form-control" placeholder="e.g. promo-iklan">
+                        </div>
+                        <div class="form-group">
+                            <label>Nama Server (Opsional)</label>
+                            <input type="text" id="promo-target-guildname" class="form-control" placeholder="e.g. Komunitas Crypto">
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label>Catatan Tambahan (Opsional)</label>
+                        <input type="text" id="promo-target-notes" class="form-control" placeholder="e.g. Boleh promo setiap 2 jam">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-ghost close-modal" data-modal="modal-promo-add-target">Batal</button>
+                    <button type="submit" class="btn-success"><i class='bx bx-plus'></i> Tambah Target</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Discover Channels (Auto-Scanner) -->
+    <div id="modal-promo-discover" class="modal" role="dialog" aria-modal="true">
+        <div class="modal-content modal-lg" style="max-width: 780px;">
+            <div class="modal-header">
+                <h2><i class='bx bx-radar' style="color:#38bdf8;"></i> Temukan Channel yang Bisa Dikirim Pesan</h2>
+                <span class="close-modal" data-modal="modal-promo-discover">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p class="subtitle" style="margin-top:0; margin-bottom:14px;">Memindai seluruh server yang sudah dimasuki oleh akun token Anda dan menyaring channel yang memiliki izin kirim pesan.</p>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <span id="promo-discover-count" style="font-size:0.85rem; color:var(--text-secondary);">Memindai...</span>
+                    <button id="btn-promo-discover-add-all" class="btn-primary" style="padding:6px 14px; font-size:0.82rem; display:none;">
+                        <i class='bx bx-check-double'></i> Tambahkan Semua yang Terpilih
+                    </button>
+                </div>
+                <div style="max-height:360px; overflow-y:auto; border:1px solid var(--border-color); border-radius:8px;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th style="width:40px;"><input type="checkbox" id="promo-discover-select-all"></th>
+                                <th>Server / Guild</th>
+                                <th>Nama Channel</th>
+                                <th>Channel ID</th>
+                                <th>Ditemukan Lewat Akun</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="promo-discover-tbody">
+                            <tr><td colspan="6" style="text-align:center; padding:20px; color:var(--text-secondary);">Memulai pemindaian server...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-ghost close-modal" data-modal="modal-promo-discover">Tutup</button>
+                <button type="button" class="btn-success" id="btn-promo-discover-submit"><i class='bx bx-plus'></i> Tambahkan Terpilih ke Target</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Quick Test Send -->
+    <div id="modal-promo-test-send" class="modal" role="dialog" aria-modal="true">
+        <div class="modal-content" style="max-width: 560px;">
+            <div class="modal-header">
+                <h2><i class='bx bx-paper-plane' style="color:#6366f1;"></i> Tes Kirim Pesan Promosi</h2>
+                <span class="close-modal" data-modal="modal-promo-test-send">&times;</span>
+            </div>
+            <form id="form-promo-test-send">
+                <div class="modal-body">
+                    <p class="subtitle" style="margin-top:0; margin-bottom:14px;">Kirim 1 pesan tes langsung sekarang untuk memverifikasi akun dan format template di Discord.</p>
+                    <div class="form-group">
+                        <label>Gunakan Akun Token</label>
+                        <select id="promo-test-token-select" class="form-control" required></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Target Channel</label>
+                        <select id="promo-test-target-select" class="form-control" required></select>
+                    </div>
+                    <div class="form-group" style="margin-bottom:0;">
+                        <label>Template Pesan</label>
+                        <select id="promo-test-template-select" class="form-control" required></select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-ghost close-modal" data-modal="modal-promo-test-send">Batal</button>
+                    <button type="submit" class="btn-primary" id="btn-submit-test-promo" style="background:linear-gradient(135deg,#6366f1,#8b5cf6); border:none;">
+                        <i class='bx bx-send'></i> Kirim Sekarang
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 

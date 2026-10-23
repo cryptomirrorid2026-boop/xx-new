@@ -40,6 +40,7 @@ const tg2dcMsgStore         = require('./utils/tgToDiscordMessageStore');
 const { registerTgToDiscordHandlers } = require('./handlers/tgToDiscordHandler');
 const memoryGuard           = require('./utils/memoryGuard');
 const autoLinkManager       = require('./utils/autoLinkManager');
+const promoManager          = require('./utils/promoManager');
 
 // ─── Banner ───────────────────────────────────────────────────────────────────
 logger.banner();
@@ -321,6 +322,8 @@ let tg2dcInitialized = false;
 
 // Inisialisasi AutoLinkManager (Auto-sync listener channel baru)
 autoLinkManager.init(discordRegistry);
+// Inisialisasi PromoManager (Bot Promosi Multi-Token)
+promoManager.init(discordRegistry);
 
 discordTokens.forEach((token, idx) => {
   const accountNum = idx + 1;

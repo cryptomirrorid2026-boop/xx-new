@@ -197,6 +197,7 @@ navLinks.forEach(link => {
         if (target === 'blur') loadBlurConfigs();
         if (target === 'wordfilter') loadWordFilter();
         if (target === 'antispam') loadAntiSpam();
+        if (target === 'promo') loadPromo();
         if (target === 'activity') { document.getElementById('activity-badge').style.display = 'none'; }
     });
 });
@@ -3698,3 +3699,866 @@ async function saveAntiSpam() {
         }
     } catch { showToast('Connection error', 'error'); }
 }
+
+/* ============================================================
+   AUTO-PROMO & MARKETING BOT — script.js Controller
+============================================================ */
+
+let _promoInitialized = false;
+let _promoCountdownInterval = null;
+let _promoTargetTime = 0;
+let _cachedPromoTokens = [];
+let _cachedPromoTargets = [];
+let _cachedPromoTemplates = [];
+
+function escapeHtml(str) {
+    if (!str || typeof str !== 'string') return '';
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function startPromoCountdown(nextExecutionAt) {
+    _promoTargetTime = nextExecutionAt;
+    if (_promoCountdownInterval) clearInterval(_promoCountdownInterval);
+
+    const el = document.getElementById('promo-countdown-timer');
+    if (!el) return;
+
+    if (!_promoTargetTime || _promoTargetTime <= Date.now()) {
+        el.textContent = '--:--';
+        return;
+    }
+
+    function tick() {
+        const timerEl = document.getElementById('promo-countdown-timer');
+        if (!timerEl) return;
+        const diffSec = Math.ceil((_promoTargetTime - Date.now()) / 1000);
+        if (diffSec <= 0) {
+            timerEl.textContent = 'Mengirim sekarang...';
+            clearInterval(_promoCountdownInterval);
+            setTimeout(loadPromoStatus, 3000);
+        } else {
+            const m = Math.floor(diffSec / 60);
+            const s = diffSec % 60;
+            timerEl.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+    }
+    tick();
+    _promoCountdownInterval = setInterval(tick, 1000);
+}
+
+function initPromoOnce() {
+    if (_promoInitialized) return;
+    _promoInitialized = true;
+
+    // Subtab navigation
+    document.querySelectorAll('.promo-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.promo-tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.promo-tab-content').forEach(c => c.classList.remove('active'));
+            btn.classList.add('active');
+            const target = btn.dataset.tab;
+            const content = document.getElementById(target);
+            if (content) content.classList.add('active');
+        });
+    });
+
+    // Master Campaign Controls
+    document.getElementById('btn-promo-start')?.addEventListener('click', async () => {
+        try {
+            const res = await fetch('/api/promo/start', { method: 'POST' }).then(r => r.json());
+            showToast('🚀 Kampanye promosi berhasil dimulai!', 'success');
+            loadPromoStatus();
+        } catch (err) {
+            showToast('Gagal memulai promosi: ' + err.message, 'error');
+        }
+    });
+
+    document.getElementById('btn-promo-pause')?.addEventListener('click', async () => {
+        try {
+            const res = await fetch('/api/promo/pause', { method: 'POST' }).then(r => r.json());
+            showToast('⏸️ Kampanye promosi dijeda.', 'warning');
+            loadPromoStatus();
+        } catch (err) {
+            showToast('Gagal menjeda promosi: ' + err.message, 'error');
+        }
+    });
+
+    document.getElementById('btn-promo-stop')?.addEventListener('click', async () => {
+        try {
+            const res = await fetch('/api/promo/stop', { method: 'POST' }).then(r => r.json());
+            showToast('⏹️ Kampanye promosi dihentikan.', 'info');
+            loadPromoStatus();
+        } catch (err) {
+            showToast('Gagal menghentikan promosi: ' + err.message, 'error');
+        }
+    });
+
+    document.getElementById('btn-promo-refresh')?.addEventListener('click', () => {
+        loadPromo();
+        showToast('Status promosi dimuat ulang', 'info');
+    });
+
+    // Modal Triggers
+    document.getElementById('btn-promo-modal-token')?.addEventListener('click', () => {
+        document.getElementById('promo-input-token-val').value = '';
+        document.getElementById('promo-input-token-name').value = '';
+        openModal('modal-promo-add-token');
+    });
+
+    document.getElementById('btn-promo-import-token')?.addEventListener('click', async () => {
+        try {
+            const res = await fetch('/api/promo/tokens/import', { method: 'POST' }).then(r => r.json());
+            if (res.success) {
+                showToast(`📥 ${res.added} akun token berhasil diimpor dari Mirror Bot! Total: ${res.total}`, 'success');
+                loadPromoTokens();
+                loadPromoStatus();
+            } else {
+                showToast('Gagal mengimpor token: ' + (res.error || 'Unknown'), 'error');
+            }
+        } catch (err) {
+            showToast('Gagal mengimpor: ' + err.message, 'error');
+        }
+    });
+
+    document.getElementById('btn-promo-modal-target')?.addEventListener('click', () => {
+        document.getElementById('promo-target-chid').value = '';
+        document.getElementById('promo-target-chname').value = '';
+        document.getElementById('promo-target-guildname').value = '';
+        document.getElementById('promo-target-notes').value = '';
+        openModal('modal-promo-add-target');
+    });
+
+    document.getElementById('btn-promo-modal-discover')?.addEventListener('click', () => {
+        openModal('modal-promo-discover');
+        runChannelDiscovery();
+    });
+
+    document.getElementById('btn-promo-test-open')?.addEventListener('click', () => {
+        populateTestSendModal();
+        openModal('modal-promo-test-send');
+    });
+
+    // Form Add Token
+    document.getElementById('form-promo-add-token')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const token = document.getElementById('promo-input-token-val').value.trim();
+        const name = document.getElementById('promo-input-token-name').value.trim();
+        if (!token) return;
+
+        const btn = document.getElementById('btn-save-promo-token');
+        if (btn) btn.disabled = true;
+
+        try {
+            const res = await fetch('/api/promo/tokens', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token, name })
+            }).then(r => r.json());
+
+            if (res.success) {
+                showToast(`Akun token berhasil ditambahkan! Menghubungkan...`, 'success');
+                closeModal('modal-promo-add-token');
+                loadPromoTokens();
+                loadPromoStatus();
+            } else {
+                showToast('Gagal: ' + (res.error || 'Token tidak valid'), 'error');
+            }
+        } catch (err) {
+            showToast('Error: ' + err.message, 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    });
+
+    // Toggle token password visibility
+    document.getElementById('btn-toggle-promo-token')?.addEventListener('click', () => {
+        const inp = document.getElementById('promo-input-token-val');
+        const icon = document.getElementById('btn-toggle-promo-token');
+        if (inp) {
+            const isPwd = inp.type === 'password';
+            inp.type = isPwd ? 'text' : 'password';
+            icon.className = isPwd ? 'bx bx-hide' : 'bx bx-show';
+        }
+    });
+
+    // Form Add Target
+    document.getElementById('form-promo-add-target')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const channelId = document.getElementById('promo-target-chid').value.trim();
+        const channelName = document.getElementById('promo-target-chname').value.trim();
+        const guildName = document.getElementById('promo-target-guildname').value.trim();
+        const notes = document.getElementById('promo-target-notes').value.trim();
+
+        try {
+            const res = await fetch('/api/promo/targets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ channelId, channelName, guildName, notes })
+            }).then(r => r.json());
+
+            if (res.success) {
+                showToast(`Target channel #${channelName || channelId} ditambahkan!`, 'success');
+                closeModal('modal-promo-add-target');
+                loadPromoTargets();
+                loadPromoStatus();
+            } else {
+                showToast('Gagal: ' + (res.error || 'Error'), 'error');
+            }
+        } catch (err) {
+            showToast('Error: ' + err.message, 'error');
+        }
+    });
+
+    // Form Anti-Ban Settings
+    document.getElementById('form-promo-settings')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const payload = {
+            delayMinSec: parseInt(document.getElementById('setting-delayMinSec').value) || 90,
+            delayMaxSec: parseInt(document.getElementById('setting-delayMaxSec').value) || 240,
+            rotationMode: document.getElementById('setting-rotationMode').value || 'round-robin',
+            hourlyLimitPerToken: parseInt(document.getElementById('setting-hourlyLimitPerToken').value) || 6,
+            dailyLimitPerToken: parseInt(document.getElementById('setting-dailyLimitPerToken').value) || 30,
+            channelCooldownMin: parseInt(document.getElementById('setting-channelCooldownMin').value) || 120,
+            simulateTyping: document.getElementById('setting-simulateTyping').checked,
+            workingHoursEnabled: document.getElementById('setting-workingHoursEnabled').checked,
+            workingHoursStart: parseInt(document.getElementById('setting-workingHoursStart').value) || 8,
+            workingHoursEnd: parseInt(document.getElementById('setting-workingHoursEnd').value) || 23,
+        };
+
+        try {
+            const res = await fetch('/api/promo/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).then(r => r.json());
+
+            if (res.success) {
+                showToast('🛡️ Pengaturan anti-ban & keamanan tersimpan!', 'success');
+            } else {
+                showToast('Gagal menyimpan: ' + (res.error || 'Error'), 'error');
+            }
+        } catch (err) {
+            showToast('Error: ' + err.message, 'error');
+        }
+    });
+
+    document.getElementById('setting-workingHoursEnabled')?.addEventListener('change', (e) => {
+        const grid = document.getElementById('promo-working-hours-grid');
+        if (grid) grid.style.display = e.target.checked ? 'grid' : 'none';
+    });
+
+    // Tag Inserters for Spintax tester
+    document.querySelectorAll('.tag-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            const tag = chip.dataset.tag;
+            const textarea = document.getElementById('promo-spintax-input');
+            if (textarea && tag) {
+                const start = textarea.selectionStart;
+                const end = textarea.selectionEnd;
+                const text = textarea.value;
+                textarea.value = text.substring(0, start) + tag + text.substring(end);
+                textarea.focus();
+                textarea.selectionStart = textarea.selectionEnd = start + tag.length;
+            }
+        });
+    });
+
+    // Spintax Tester Button
+    document.getElementById('btn-promo-test-spintax')?.addEventListener('click', async () => {
+        const content = document.getElementById('promo-spintax-input').value;
+        if (!content) {
+            showToast('Masukkan teks template terlebih dahulu!', 'warning');
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/promo/templates/preview', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content, meta: { guildName: 'VIP Crypto Hub', channelName: 'promo-member' } })
+            }).then(r => r.json());
+
+            if (res.success) {
+                document.getElementById('promo-spintax-output').textContent = res.preview;
+                document.getElementById('promo-preview-time').textContent = 'Hari ini pukul ' + new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+            }
+        } catch (err) {
+            showToast('Gagal preview: ' + err.message, 'error');
+        }
+    });
+
+    // Add New Template Button
+    document.getElementById('btn-promo-new-template')?.addEventListener('click', () => {
+        const name = prompt('Masukkan Nama Template Promosi (contoh: Promo Kelas VIP Diskon):');
+        if (!name) return;
+        const defaultContent = "{Halo|Hai|Permisi} {semuanya|rekan-rekan}! 🔥\n\nIngin sinyal trading akurat 24/7? Join {Kelas VIP Mirror|VIP Trading Hub} kami sekarang!\n\nBenefit:\n- Mirror Discord & Telegram cepat\n- Edukasi & diskusi mentor\n\nInfo & join: https://t.me/yourlink\n{Salam cuan!|Good luck!}";
+        
+        fetch('/api/promo/templates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, content: defaultContent })
+        }).then(r => r.json()).then(res => {
+            if (res.success) {
+                showToast(`Template "${name}" berhasil dibuat!`, 'success');
+                loadPromoTemplates();
+            } else {
+                showToast('Gagal: ' + (res.error || 'Error'), 'error');
+            }
+        });
+    });
+
+    // Test Send Form Submit
+    document.getElementById('form-promo-test-send')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const tokenId = document.getElementById('promo-test-token-select').value;
+        const channelId = document.getElementById('promo-test-target-select').value;
+        const templateId = document.getElementById('promo-test-template-select').value;
+
+        const btn = document.getElementById('btn-submit-test-promo');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = "<i class='bx bx-loader-alt bx-spin'></i> Mengirim...";
+        }
+
+        try {
+            const res = await fetch('/api/promo/test-send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tokenId, channelId, templateId })
+            }).then(r => r.json());
+
+            if (res.success) {
+                showToast(`✅ Pesan tes terkirim ke #${res.channelName} (${res.guildName}) via ${res.account}!`, 'success');
+                closeModal('modal-promo-test-send');
+                loadPromoStatus();
+                loadPromoLogs();
+            } else {
+                showToast('Gagal kirim tes: ' + (res.error || 'Error'), 'error');
+            }
+        } catch (err) {
+            showToast('Error: ' + err.message, 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = "<i class='bx bx-send'></i> Kirim Sekarang";
+            }
+        }
+    });
+
+    // Clear Logs Button
+    document.getElementById('btn-promo-clear-logs')?.addEventListener('click', async () => {
+        if (!confirm('Bersihkan semua riwayat log promosi?')) return;
+        try {
+            await fetch('/api/promo/logs/clear', { method: 'POST' });
+            showToast('Riwayat log dibersihkan', 'info');
+            loadPromoLogs();
+        } catch (_) {}
+    });
+
+    // Log Filter
+    document.getElementById('promo-log-filter')?.addEventListener('change', () => {
+        loadPromoLogs();
+    });
+}
+
+async function loadPromo() {
+    initPromoOnce();
+    await Promise.all([
+        loadPromoStatus(),
+        loadPromoTokens(),
+        loadPromoTargets(),
+        loadPromoTemplates(),
+        loadPromoSettings(),
+        loadPromoLogs()
+    ]);
+}
+
+async function loadPromoStatus() {
+    try {
+        const data = await fetch('/api/promo/status').then(r => r.json());
+        
+        // Update Pill Badge
+        const pill = document.getElementById('promo-status-pill');
+        const text = document.getElementById('promo-status-text');
+        const badge = document.getElementById('promo-status-badge');
+        const statStatus = document.getElementById('promo-stat-status');
+        
+        const isRunning = data.status === 'RUNNING';
+        const isPaused = data.status === 'PAUSED';
+
+        if (pill) {
+            pill.className = `promo-status-badge ${data.status.toLowerCase()}`;
+            const icon = isRunning ? 'bx-broadcast' : (isPaused ? 'bx-pause-circle' : 'bx-stop-circle');
+            pill.innerHTML = `<i class='bx ${icon}'></i> <span>${data.status}</span>`;
+        }
+
+        if (badge) {
+            badge.style.display = isRunning ? 'inline-block' : 'none';
+            badge.textContent = isRunning ? 'RUNNING' : data.status;
+            badge.style.background = isRunning ? '#10b981' : '#f59e0b';
+        }
+
+        if (statStatus) {
+            statStatus.textContent = data.status;
+            statStatus.style.color = isRunning ? '#10b981' : (isPaused ? '#f59e0b' : '#ef4444');
+        }
+
+        document.getElementById('promo-stat-tokens').textContent = `${data.activeTokens} / ${data.totalTokens}`;
+        document.getElementById('promo-stat-tokens-sub').innerHTML = `<i class='bx bx-check-circle'></i> ${data.activeTokens} akun online & siap`;
+        
+        document.getElementById('promo-stat-targets').textContent = data.activeTargets;
+        document.getElementById('promo-stat-targets-sub').innerHTML = `<i class='bx bx-target-lock'></i> ${data.activeTargets} dari ${data.totalTargets} aktif`;
+
+        document.getElementById('promo-stat-sent').textContent = data.stats.totalSent || 0;
+        document.getElementById('promo-stat-rate').innerHTML = `<i class='bx bx-check-double'></i> Hari ini: ${data.stats.todaySent || 0} pesan`;
+
+        document.getElementById('promo-next-account').textContent = data.currentAccountTag || '-';
+        document.getElementById('promo-next-target').textContent = data.currentTargetName || '-';
+
+        startPromoCountdown(data.nextExecutionAt);
+    } catch (_) {}
+}
+
+async function loadPromoTokens() {
+    try {
+        const tokens = await fetch('/api/promo/tokens').then(r => r.json());
+        _cachedPromoTokens = tokens || [];
+        const container = document.getElementById('promo-tokens-container');
+        const badgeCount = document.getElementById('badge-promo-tokens');
+        if (badgeCount) badgeCount.textContent = _cachedPromoTokens.length;
+
+        if (!container) return;
+        if (!_cachedPromoTokens.length) {
+            container.innerHTML = `
+                <div style="grid-column: 1/-1; text-align:center; padding:36px; background:rgba(255,255,255,0.02); border:1px dashed var(--border-color); border-radius:12px;">
+                    <i class='bx bx-key' style="font-size:2.4rem; color:var(--text-secondary); margin-bottom:8px; display:block;"></i>
+                    <div style="font-weight:600; margin-bottom:4px;">Belum Ada Akun Token Promo</div>
+                    <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:14px;">Tambahkan akun token Discord Anda atau import langsung dari token mirror yang sudah berjalan.</p>
+                    <button class="btn-primary" onclick="document.getElementById('btn-promo-modal-token')?.click()">
+                        <i class='bx bx-plus'></i> Tambah Token Sekarang
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = _cachedPromoTokens.map(t => {
+            const isReady = t.status === 'READY';
+            const isError = t.status === 'ERROR' || t.status === 'INVALID_TOKEN';
+            const isRateLimited = t.status === 'RATE_LIMITED';
+
+            let statusColor = '#94a3b8';
+            if (isReady) statusColor = '#10b981';
+            else if (isRateLimited) statusColor = '#f59e0b';
+            else if (isError) statusColor = '#ef4444';
+
+            const hourlyLimit = 8;
+            const dailyLimit = 40;
+            const hourlyPct = Math.min(Math.round(((t.hourlyCount || 0) / hourlyLimit) * 100), 100);
+            const dailyPct = Math.min(Math.round(((t.dailyCount || 0) / dailyLimit) * 100), 100);
+
+            const avatarSrc = t.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(t.username || t.name || 'Bot')}&background=0ea5e9&color=fff`;
+
+            return `
+                <div class="promo-token-card">
+                    <div class="promo-token-header">
+                        <img src="${avatarSrc}" class="promo-avatar" onerror="this.src='https://ui-avatars.com/api/?name=Discord&background=334155&color=fff'">
+                        <div class="promo-token-meta">
+                            <div class="promo-token-tag" title="${escapeHtml(t.tag || t.name)}">${escapeHtml(t.tag || t.name)}</div>
+                            <div class="promo-token-sub">${escapeHtml(t.maskedToken || '••••••••')} (${t.guildCount || 0} server)</div>
+                        </div>
+                        <span class="badge" style="background:${statusColor}22; color:${statusColor}; border:1px solid ${statusColor}44; font-size:0.75rem;">
+                            ${t.status}
+                        </span>
+                    </div>
+
+                    <div class="promo-quota-box">
+                        <div class="promo-quota-row">
+                            <span>Kuota 1 Jam:</span>
+                            <b>${t.hourlyCount || 0} / ${hourlyLimit}</b>
+                        </div>
+                        <div class="promo-quota-bar">
+                            <div class="promo-quota-fill ${hourlyPct > 80 ? 'warn' : ''}" style="width:${hourlyPct}%"></div>
+                        </div>
+
+                        <div class="promo-quota-row" style="margin-top:4px;">
+                            <span>Kuota Hari Ini:</span>
+                            <b>${t.dailyCount || 0} / ${dailyLimit}</b>
+                        </div>
+                        <div class="promo-quota-bar">
+                            <div class="promo-quota-fill ${dailyPct > 80 ? 'warn' : ''}" style="width:${dailyPct}%"></div>
+                        </div>
+                    </div>
+
+                    ${t.errorMsg ? `<div style="font-size:0.75rem; color:#ef4444; background:rgba(239,68,68,0.1); padding:6px 8px; border-radius:6px;">⚠️ ${escapeHtml(t.errorMsg)}</div>` : ''}
+
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding-top:6px; border-top:1px solid var(--border-color);">
+                        <label class="switch" style="transform:scale(0.85);" title="Aktifkan/Nonaktifkan akun">
+                            <input type="checkbox" ${t.enabled ? 'checked' : ''} onchange="togglePromoToken('${t.id}', this.checked)">
+                            <span class="slider round"></span>
+                        </label>
+                        <div style="display:flex; gap:6px;">
+                            <button class="btn-danger-soft" style="padding:4px 8px; font-size:0.78rem;" onclick="deletePromoToken('${t.id}', '${escapeHtml(t.tag || t.name)}')">
+                                <i class='bx bx-trash'></i> Hapus
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (_) {}
+}
+
+async function togglePromoToken(id, enabled) {
+    try {
+        await fetch(`/api/promo/tokens/${id}/toggle`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled })
+        });
+        showToast(`Status akun diperbarui`, 'info');
+        loadPromoStatus();
+    } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+    }
+}
+
+async function deletePromoToken(id, tag) {
+    if (!confirm(`Hapus token "${tag}" dari pool marketing?`)) return;
+    try {
+        await fetch(`/api/promo/tokens/${id}`, { method: 'DELETE' });
+        showToast('Akun token dihapus', 'warning');
+        loadPromoTokens();
+        loadPromoStatus();
+    } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+    }
+}
+
+async function loadPromoTargets() {
+    try {
+        const targets = await fetch('/api/promo/targets').then(r => r.json());
+        _cachedPromoTargets = targets || [];
+        const tbody = document.getElementById('promo-targets-tbody');
+        const badgeCount = document.getElementById('badge-promo-targets');
+        if (badgeCount) badgeCount.textContent = _cachedPromoTargets.length;
+
+        if (!tbody) return;
+        if (!_cachedPromoTargets.length) {
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:32px; color:var(--text-secondary);">Belum ada target channel. Klik "Temukan Channel Otomatis" atau "Tambah Target Manual".</td></tr>`;
+            return;
+        }
+
+        const now = Date.now();
+        const cooldownMin = 120;
+        const cooldownMs = cooldownMin * 60 * 1000;
+
+        tbody.innerHTML = _cachedPromoTargets.map(t => {
+            const timeSinceLast = now - (t.lastSentAt || 0);
+            const inCooldown = timeSinceLast < cooldownMs && t.lastSentAt > 0;
+            const remainingMin = Math.ceil((cooldownMs - timeSinceLast) / 60000);
+
+            const cooldownHtml = inCooldown
+                ? `<span class="badge" style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.3);"><i class='bx bx-time'></i> Cooldown ${remainingMin}m</span>`
+                : `<span class="badge" style="background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3);"><i class='bx bx-check'></i> Siap Kirim</span>`;
+
+            return `
+                <tr>
+                    <td><b>${escapeHtml(t.guildName || 'Discord Server')}</b></td>
+                    <td><span style="color:#38bdf8;">#${escapeHtml(t.channelName || t.channelId)}</span></td>
+                    <td><code>${escapeHtml(t.channelId)}</code></td>
+                    <td>${cooldownHtml}</td>
+                    <td><b>${t.totalSent || 0}</b> pesan</td>
+                    <td>
+                        <label class="switch" style="transform:scale(0.85);">
+                            <input type="checkbox" ${t.enabled ? 'checked' : ''} onchange="togglePromoTarget('${t.id}', this.checked)">
+                            <span class="slider round"></span>
+                        </label>
+                    </td>
+                    <td>
+                        <button class="btn-danger-soft" style="padding:4px 8px; font-size:0.75rem;" onclick="deletePromoTarget('${t.id}', '${escapeHtml(t.channelName || t.channelId)}')">
+                            <i class='bx bx-trash'></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    } catch (_) {}
+}
+
+async function togglePromoTarget(id, enabled) {
+    try {
+        await fetch(`/api/promo/targets/${id}/toggle`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled })
+        });
+        showToast('Status target channel diperbarui', 'info');
+        loadPromoStatus();
+    } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+    }
+}
+
+async function deletePromoTarget(id, name) {
+    if (!confirm(`Hapus target channel #${name}?`)) return;
+    try {
+        await fetch(`/api/promo/targets/${id}`, { method: 'DELETE' });
+        showToast('Target channel dihapus', 'warning');
+        loadPromoTargets();
+        loadPromoStatus();
+    } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+    }
+}
+
+async function loadPromoTemplates() {
+    try {
+        const templates = await fetch('/api/promo/templates').then(r => r.json());
+        _cachedPromoTemplates = templates || [];
+        const container = document.getElementById('promo-templates-list');
+        const badgeCount = document.getElementById('badge-promo-templates');
+        if (badgeCount) badgeCount.textContent = _cachedPromoTemplates.length;
+
+        if (!container) return;
+        if (!_cachedPromoTemplates.length) {
+            container.innerHTML = `<div style="text-align:center; padding:24px; color:var(--text-secondary);">Belum ada template. Klik Tambah Template.</div>`;
+            return;
+        }
+
+        // Isi textarea simulator dengan template pertama jika masih kosong
+        const inputSpintax = document.getElementById('promo-spintax-input');
+        if (inputSpintax && !inputSpintax.value && _cachedPromoTemplates[0]) {
+            inputSpintax.value = _cachedPromoTemplates[0].content;
+            document.getElementById('btn-promo-test-spintax')?.click();
+        }
+
+        container.innerHTML = _cachedPromoTemplates.map(tpl => {
+            const previewSnippet = tpl.content.substring(0, 110) + (tpl.content.length > 110 ? '...' : '');
+            return `
+                <div style="background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:10px; padding:12px 14px; display:flex; flex-direction:column; gap:8px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-weight:600; font-size:0.92rem; color:var(--text-primary);">${escapeHtml(tpl.name)}</span>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <span class="badge" style="background:rgba(168,85,247,0.15); color:#c084fc; font-size:0.75rem;">
+                                Dipakai: ${tpl.useCount || 0}x
+                            </span>
+                            <button class="btn-icon" style="width:28px; height:28px; font-size:0.85rem;" title="Muat ke Simulator" onclick="loadTemplateToSimulator('${tpl.id}')">
+                                <i class='bx bx-edit-alt'></i>
+                            </button>
+                            <button class="btn-icon" style="width:28px; height:28px; font-size:0.85rem; color:#ef4444;" title="Hapus Template" onclick="deletePromoTemplate('${tpl.id}', '${escapeHtml(tpl.name)}')">
+                                <i class='bx bx-trash'></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div style="font-size:0.82rem; color:var(--text-secondary); line-height:1.4; white-space:pre-wrap; font-family:'JetBrains Mono', monospace; background:rgba(0,0,0,0.2); padding:8px 10px; border-radius:6px;">${escapeHtml(previewSnippet)}</div>
+                </div>
+            `;
+        }).join('');
+    } catch (_) {}
+}
+
+function loadTemplateToSimulator(id) {
+    const tpl = _cachedPromoTemplates.find(t => t.id === id);
+    if (!tpl) return;
+    const input = document.getElementById('promo-spintax-input');
+    if (input) {
+        input.value = tpl.content;
+        showToast(`Template "${tpl.name}" dimuat ke simulator`, 'info');
+        document.getElementById('btn-promo-test-spintax')?.click();
+    }
+}
+
+async function deletePromoTemplate(id, name) {
+    if (!confirm(`Hapus template "${name}"?`)) return;
+    try {
+        await fetch(`/api/promo/templates/${id}`, { method: 'DELETE' });
+        showToast('Template dihapus', 'warning');
+        loadPromoTemplates();
+    } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+    }
+}
+
+async function loadPromoSettings() {
+    try {
+        const s = await fetch('/api/promo/settings').then(r => r.json());
+        if (!s) return;
+
+        if (document.getElementById('setting-delayMinSec')) document.getElementById('setting-delayMinSec').value = s.delayMinSec || 90;
+        if (document.getElementById('setting-delayMaxSec')) document.getElementById('setting-delayMaxSec').value = s.delayMaxSec || 240;
+        if (document.getElementById('setting-rotationMode')) document.getElementById('setting-rotationMode').value = s.rotationMode || 'round-robin';
+        if (document.getElementById('setting-hourlyLimitPerToken')) document.getElementById('setting-hourlyLimitPerToken').value = s.hourlyLimitPerToken || 6;
+        if (document.getElementById('setting-dailyLimitPerToken')) document.getElementById('setting-dailyLimitPerToken').value = s.dailyLimitPerToken || 30;
+        if (document.getElementById('setting-channelCooldownMin')) document.getElementById('setting-channelCooldownMin').value = s.channelCooldownMin || 120;
+        
+        if (document.getElementById('setting-simulateTyping')) document.getElementById('setting-simulateTyping').checked = s.simulateTyping !== false;
+        if (document.getElementById('setting-workingHoursEnabled')) {
+            document.getElementById('setting-workingHoursEnabled').checked = !!s.workingHoursEnabled;
+            const grid = document.getElementById('promo-working-hours-grid');
+            if (grid) grid.style.display = s.workingHoursEnabled ? 'grid' : 'none';
+        }
+        if (document.getElementById('setting-workingHoursStart')) document.getElementById('setting-workingHoursStart').value = s.workingHoursStart || 8;
+        if (document.getElementById('setting-workingHoursEnd')) document.getElementById('setting-workingHoursEnd').value = s.workingHoursEnd || 23;
+    } catch (_) {}
+}
+
+async function loadPromoLogs() {
+    try {
+        const logs = await fetch('/api/promo/logs').then(r => r.json());
+        const tbody = document.getElementById('promo-logs-tbody');
+        const filterVal = document.getElementById('promo-log-filter')?.value || 'ALL';
+
+        if (!tbody) return;
+        if (!logs || !logs.length) {
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px; color:var(--text-secondary);">Belum ada riwayat pengiriman promosi.</td></tr>`;
+            return;
+        }
+
+        const filtered = filterVal === 'ALL' ? logs : logs.filter(l => l.status === filterVal);
+
+        if (!filtered.length) {
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px; color:var(--text-secondary);">Tidak ada log dengan filter ${filterVal}.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = filtered.map(l => {
+            let statusBadge = '<span class="badge" style="background:#10b98122; color:#10b981;">SUKSES</span>';
+            if (l.status === 'RATE_LIMITED') statusBadge = '<span class="badge" style="background:#f59e0b22; color:#f59e0b;">RATE LIMIT</span>';
+            else if (l.status === 'FAILED') statusBadge = '<span class="badge" style="background:#ef444422; color:#ef4444;">GAGAL</span>';
+            else if (l.status === 'SKIPPED') statusBadge = '<span class="badge" style="background:#64748b22; color:#94a3b8;">LEWATI</span>';
+
+            return `
+                <tr>
+                    <td style="white-space:nowrap; font-family:'JetBrains Mono', monospace; font-size:0.8rem;">${l.timeStr}</td>
+                    <td>${statusBadge}</td>
+                    <td><b>${escapeHtml(l.tokenTag || '-')}</b></td>
+                    <td><b>${escapeHtml(l.guildName || '-')}</b> <span style="color:#38bdf8;">#${escapeHtml(l.channelName || l.channelId)}</span></td>
+                    <td style="max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:0.8rem; color:var(--text-secondary);" title="${escapeHtml(l.messagePreview || '')}">
+                        ${escapeHtml(l.messagePreview || '-')}
+                    </td>
+                    <td style="font-size:0.78rem; color:var(--text-secondary);">${escapeHtml(l.note || '')}</td>
+                </tr>
+            `;
+        }).join('');
+    } catch (_) {}
+}
+
+// Auto-Discovery Scanner
+let _discoveredChannelsList = [];
+async function runChannelDiscovery() {
+    const tbody = document.getElementById('promo-discover-tbody');
+    const countEl = document.getElementById('promo-discover-count');
+    const addAllBtn = document.getElementById('btn-promo-discover-add-all');
+
+    if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px; color:var(--text-secondary);"><i class='bx bx-loader-alt bx-spin' style="font-size:1.5rem; display:block; margin-bottom:8px;"></i> Memindai seluruh server yang dapat diakses...</td></tr>`;
+
+    try {
+        const res = await fetch('/api/promo/targets/discover', { method: 'POST' }).then(r => r.json());
+        if (res.success && Array.isArray(res.channels)) {
+            _discoveredChannelsList = res.channels;
+            if (countEl) countEl.textContent = `Ditemukan ${_discoveredChannelsList.length} channel yang memiliki izin kirim pesan`;
+            if (addAllBtn) addAllBtn.style.display = _discoveredChannelsList.length ? 'inline-flex' : 'none';
+
+            if (!_discoveredChannelsList.length) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px; color:var(--text-secondary);">Tidak ada channel yang ditemukan. Pastikan akun token sudah masuk server tujuan.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = _discoveredChannelsList.map((ch, idx) => {
+                const checked = !ch.alreadyAdded && !ch.isRestrictedName ? 'checked' : '';
+                const disabled = ch.alreadyAdded ? 'disabled' : '';
+                const statusTag = ch.alreadyAdded
+                    ? '<span class="badge" style="background:#64748b22; color:#94a3b8;">Sudah Ada</span>'
+                    : (ch.isRestrictedName ? '<span class="badge" style="background:#f59e0b22; color:#f59e0b;">Rules/Mod</span>' : '<span class="badge" style="background:#10b98122; color:#10b981;">Tersedia</span>');
+
+                return `
+                    <tr>
+                        <td><input type="checkbox" class="cb-discover-item" data-idx="${idx}" ${checked} ${disabled}></td>
+                        <td><b>${escapeHtml(ch.guildName)}</b></td>
+                        <td><span style="color:#38bdf8;">#${escapeHtml(ch.channelName)}</span></td>
+                        <td><code>${escapeHtml(ch.channelId)}</code></td>
+                        <td style="font-size:0.8rem; color:var(--text-secondary);">${escapeHtml(ch.foundViaAccount)}</td>
+                        <td>${statusTag}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            // Select all trigger
+            document.getElementById('promo-discover-select-all')?.addEventListener('change', (e) => {
+                document.querySelectorAll('.cb-discover-item:not(:disabled)').forEach(cb => cb.checked = e.target.checked);
+            });
+
+            // Submit selected to targets
+            const btnDiscoverSubmit = document.getElementById('btn-promo-discover-submit');
+            if (btnDiscoverSubmit) {
+                btnDiscoverSubmit.onclick = async () => {
+                    const selectedCheckboxes = document.querySelectorAll('.cb-discover-item:checked:not(:disabled)');
+                if (!selectedCheckboxes.length) {
+                    showToast('Pilih setidaknya satu channel!', 'warning');
+                    return;
+                }
+
+                let addedCount = 0;
+                for (const cb of selectedCheckboxes) {
+                    const item = _discoveredChannelsList[parseInt(cb.dataset.idx)];
+                    if (item) {
+                        try {
+                            await fetch('/api/promo/targets', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    channelId: item.channelId,
+                                    channelName: item.channelName,
+                                    guildName: item.guildName,
+                                    notes: `Auto-discovered via ${item.foundViaAccount}`
+                                })
+                            });
+                            addedCount++;
+                        } catch (_) {}
+                    }
+                }
+
+                showToast(`✅ ${addedCount} channel berhasil ditambahkan ke daftar target!`, 'success');
+                closeModal('modal-promo-discover');
+                loadPromoTargets();
+                loadPromoStatus();
+            };
+        }
+        } else {
+            tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px; color:#ef4444;">Gagal memindai: ${res.error || 'Unknown error'}</td></tr>`;
+        }
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:24px; color:#ef4444;">Error: ${err.message}</td></tr>`;
+    }
+}
+
+function populateTestSendModal() {
+    const selToken = document.getElementById('promo-test-token-select');
+    const selTarget = document.getElementById('promo-test-target-select');
+    const selTemplate = document.getElementById('promo-test-template-select');
+
+    if (selToken) {
+        selToken.innerHTML = _cachedPromoTokens.filter(t => t.enabled).map(t =>
+            `<option value="${t.id}">${escapeHtml(t.tag || t.name)} (${t.status})</option>`
+        ).join('') || '<option value="">Tidak ada akun aktif</option>';
+    }
+
+    if (selTarget) {
+        selTarget.innerHTML = _cachedPromoTargets.filter(t => t.enabled).map(t =>
+            `<option value="${t.channelId}">${escapeHtml(t.guildName)} ➔ #${escapeHtml(t.channelName)}</option>`
+        ).join('') || '<option value="">Tidak ada target channel aktif</option>';
+    }
+
+    if (selTemplate) {
+        selTemplate.innerHTML = _cachedPromoTemplates.filter(t => t.enabled).map(t =>
+            `<option value="${t.id}">${escapeHtml(t.name)}</option>`
+        ).join('') || '<option value="">Tidak ada template aktif</option>';
+    }
+}
+
