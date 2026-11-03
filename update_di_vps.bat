@@ -134,7 +134,7 @@ call %PM2_CMD% status
 echo ----------------------------------------------------------------
 echo.
 echo Catatan:
-echo - Dashboard dapat diakses di: http://localhost:5080 (atau IP VPS:5080)
+echo - Dashboard dapat diakses di: http://localhost:7080 (atau IP VPS:5080)
 echo - Data pelanggan/transaksi di SQLite tetap utuh dan aman.
 echo - Cek log real-time bot dengan: pm2 logs
 echo ================================================================

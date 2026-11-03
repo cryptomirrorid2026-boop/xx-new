@@ -91,11 +91,12 @@ autoLinkManager.setPushEventFn(pushEvent);
 promoManager.setPushEventFn(pushEvent);
 
 // ─── Main ────────────────────────────────────────────────────
-function startWebServer(tgManager, channelMap, port = 5080, tg2dcStore = null) {
-  // Proteksi mutlak: port 5005 & 3000 dipakai oleh project Store / Jurnal
-  if (port === 5005 || port === 3000) {
-    logger.warn(`⚠️ Port ${port} dialokasikan untuk project Store! Mengalihkan dashboard ke port aman 5080.`);
-    port = 5080;
+const FORBIDDEN_PORTS = [5005, 3000, 5000, 3333, 5080, 8080];
+function startWebServer(tgManager, channelMap, port = 7080, tg2dcStore = null) {
+  // Proteksi mutlak anti-bentrok: port 5005, 3000, 5000, 3333, 5080, 8080 dipakai oleh project lain (Store / ReviewLink / Jurnal)
+  if (FORBIDDEN_PORTS.includes(Number(port))) {
+    logger.warn(`⚠️ Port ${port} dialokasikan untuk project lain! Mengalihkan dashboard ke port aman 7080.`);
+    port = 7080;
   }
   const app = express();
   app.use(cors());

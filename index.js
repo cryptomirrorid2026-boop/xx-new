@@ -268,12 +268,13 @@ registerTelegramCommands(tgManager, channelMap, config, channelStore, tg2dcStore
 
 // ─── Health Check HTTP Server / Web Dashboard ────────────────────────────────
 const ENABLE_WEB = process.env.ENABLE_WEB_SERVER !== 'false';
-let HEALTH_PORT = parseInt(process.env.PORT || process.env.HEALTH_PORT || '5080');
-if (HEALTH_PORT === 5005 || HEALTH_PORT === 3000) {
-  logger.warn(`⚠️ Port ${HEALTH_PORT} terdeteksi milik project Store! Mengalihkan ke port aman 5080.`);
-  HEALTH_PORT = 5080;
-  process.env.PORT = '5080';
-  process.env.HEALTH_PORT = '5080';
+let HEALTH_PORT = parseInt(process.env.PORT || process.env.HEALTH_PORT || '7080');
+const FORBIDDEN_PORTS = [5005, 3000, 5000, 3333, 5080, 8080];
+if (FORBIDDEN_PORTS.includes(HEALTH_PORT)) {
+  logger.warn(`⚠️ Port ${HEALTH_PORT} terdeteksi milik project lain! Mengalihkan ke port aman 7080.`);
+  HEALTH_PORT = 7080;
+  process.env.PORT = '7080';
+  process.env.HEALTH_PORT = '7080';
 }
 if (ENABLE_WEB) {
   startWebServer(tgManager, channelMap, HEALTH_PORT, tg2dcStore);

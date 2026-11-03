@@ -522,7 +522,7 @@ function registerTelegramCommands(tgManager, channelMap, config, channelStore = 
       let tunnelData = readTunnelData();
 
       // Validasi tunnel data: jika belum ada, atau port tidak cocok, atau data usang (>12 jam), regenerate
-      const expectedPort = parseInt(process.env.HEALTH_PORT || process.env.PORT || '5080');
+      const expectedPort = parseInt(process.env.HEALTH_PORT || process.env.PORT || '7080');
       const isStale = !tunnelData.updatedAt || (tunnelData.port && tunnelData.port !== expectedPort) || (Date.now() - new Date(tunnelData.updatedAt).getTime() > 1000 * 60 * 60 * 12);
       if ((!tunnelData.cloudflare && !tunnelData.ngrok) || isStale) {
         try {
@@ -541,8 +541,9 @@ function registerTelegramCommands(tgManager, channelMap, config, channelStore = 
         }
       }
 
-      let rawLocalPort = tunnelData.port || process.env.HEALTH_PORT || process.env.PORT || '5080';
-      if (String(rawLocalPort) === '5005' || String(rawLocalPort) === '3000') rawLocalPort = '5080';
+      let rawLocalPort = tunnelData.port || process.env.HEALTH_PORT || process.env.PORT || '7080';
+      if (['5005', '3000', '5000', '3333', '5080', '8080'].includes(String(rawLocalPort))) rawLocalPort = '7080';
+      
       const localPort = rawLocalPort;
       const ngrokStatus = tunnelData.ngrokStatus;
       const cfUrl = tunnelData.cloudflare || null;
@@ -655,7 +656,7 @@ function registerTelegramCommands(tgManager, channelMap, config, channelStore = 
       ``,
       `☁️ Cloudflare: ${resultData.cloudflare ? `<a href="${resultData.cloudflare}">${resultData.cloudflare}</a>` : '<i>Sedang proses...</i>'}`,
       `🚇 Ngrok: ${resultData.ngrok ? `<a href="${resultData.ngrok}">${resultData.ngrok}</a>` : (resultData.ngrokStatus === 'conflict' ? '⚠️ Bentrok dengan Store' : '<i>Menghubungkan...</i>')}`,
-      `🏠 Port Lokal: ${(resultData.port && resultData.port !== 5005 && resultData.port !== 3000) ? resultData.port : 5080}`
+      `🏠 Port Lokal: ${(resultData.port && !['5005', '3000', '5000', '3333', '5080', '8080'].includes(String(resultData.port))) ? resultData.port : 7080}`
     ].join('\n'));
   });
 
