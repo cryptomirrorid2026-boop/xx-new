@@ -47,6 +47,9 @@ echo  [INFO] Memulai bot...
 echo  [INFO] Tekan Ctrl+C untuk menghentikan
 echo.
 
+taskkill /F /IM cloudflared.exe >nul 2>&1
+if exist "data\tunnel.pid" del /f /q "data\tunnel.pid" >nul 2>&1
+
 :restart
 node --max-old-space-size=1024 --expose-gc index.js
 

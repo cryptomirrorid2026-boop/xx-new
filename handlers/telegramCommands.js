@@ -521,8 +521,10 @@ function registerTelegramCommands(tgManager, channelMap, config, channelStore = 
 
       let tunnelData = readTunnelData();
 
-      // Jika tunnel data belum ada atau URL belum jadi, pastikan tunnel script dijalankan
-      if (!tunnelData.cloudflare && !tunnelData.ngrok) {
+      // Validasi tunnel data: jika belum ada, atau port tidak cocok, atau data usang (>12 jam), regenerate
+      const expectedPort = parseInt(process.env.HEALTH_PORT || process.env.PORT || '5080');
+      const isStale = !tunnelData.updatedAt || (tunnelData.port && tunnelData.port !== expectedPort) || (Date.now() - new Date(tunnelData.updatedAt).getTime() > 1000 * 60 * 60 * 12);
+      if ((!tunnelData.cloudflare && !tunnelData.ngrok) || isStale) {
         try {
           if (fs.existsSync(tunnelScript)) {
             const { fork } = require('child_process');
@@ -603,10 +605,26 @@ function registerTelegramCommands(tgManager, channelMap, config, channelStore = 
       if (fs.existsSync(pidPath)) {
         const oldPid = parseInt(fs.readFileSync(pidPath, 'utf8').trim());
         if (oldPid) {
-          try { process.kill(oldPid); } catch (_) {}
+          if (process.platform === 'win32') {
+            const { execSync } = require('child_process');
+            try { execSync(`taskkill /F /T /PID ${oldPid}`, { stdio: 'ignore' }); } catch (_) {}
+          } else {
+            try { process.kill(oldPid, 'SIGKILL'); } catch (_) {}
+          }
         }
-        fs.unlinkSync(pidPath);
+        try { fs.unlinkSync(pidPath); } catch (_) {}
       }
+    } catch (_) {}
+
+    if (process.platform === 'win32') {
+      try {
+        const { execSync } = require('child_process');
+        execSync('taskkill /F /IM cloudflared.exe', { stdio: 'ignore' });
+      } catch (_) {}
+    }
+
+    try {
+      if (fs.existsSync(tunnelPath)) fs.unlinkSync(tunnelPath);
     } catch (_) {}
 
     try {

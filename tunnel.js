@@ -5,7 +5,7 @@ require('dotenv').config({ override: true });
 
 let isShuttingDown = false;
 
-// ─── Single-Instance Guard (Mencegah Instance Tunnel Ganda) ───────────────────
+// ─── Single-Instance Guard (Mencegah Instance Tunnel Ganda & Bunuh Zombie) ────
 const dataPath = path.join(__dirname, 'data');
 if (!fs.existsSync(dataPath)) fs.mkdirSync(dataPath, { recursive: true });
 const pidPath = path.join(dataPath, 'tunnel.pid');
@@ -15,33 +15,48 @@ try {
     const existingPid = parseInt(fs.readFileSync(pidPath, 'utf8').trim());
     if (existingPid && existingPid !== process.pid) {
       try {
-        process.kill(existingPid, 0); // Jika tidak throw error, proses masih hidup
-        console.log(`[Tunnel] Instance tunnel lain sudah aktif (PID ${existingPid}). Instance ini selesai.`);
-        process.exit(0);
+        process.kill(existingPid, 0); // Cek apakah masih hidup
+        console.log(`[Tunnel] Menghentikan instance tunnel lama (PID ${existingPid}) agar tidak bentrok...`);
+        if (process.platform === 'win32') {
+          const { execSync } = require('child_process');
+          try { execSync(`taskkill /F /T /PID ${existingPid}`, { stdio: 'ignore' }); } catch (_) {}
+        } else {
+          try { process.kill(existingPid, 'SIGKILL'); } catch (_) {}
+        }
       } catch (_) {
-        // PID sebelumnya sudah mati, boleh lanjut
+        // PID sebelumnya sudah mati
       }
     }
   }
 } catch (_) {}
 
+// Matikan juga proses cloudflared liar yang mungkin tertinggal dari sesi sebelumnya
+if (process.platform === 'win32') {
+  try {
+    const { execSync } = require('child_process');
+    execSync('taskkill /F /IM cloudflared.exe', { stdio: 'ignore' });
+  } catch (_) {}
+}
+
 try {
   fs.writeFileSync(pidPath, String(process.pid));
 } catch (_) {}
 
-// ─── Deteksi Port Otomatis (Anti-Tabrakan Port) ────────────────────────────────
+// ─── Deteksi Port Otomatis (Anti-Tabrakan Port dengan Web Sebelah / Store) ─────
+const FORBIDDEN_PORTS = ['5005', '3000', '5000', '3333', '8080'];
+
 function getTargetPort() {
   const portFile = path.join(dataPath, 'web-port.json');
   try {
     if (fs.existsSync(portFile)) {
       const portInfo = JSON.parse(fs.readFileSync(portFile, 'utf8'));
-      if (portInfo && portInfo.port && portInfo.port !== 5005 && portInfo.port !== 3000) {
+      if (portInfo && portInfo.port && !FORBIDDEN_PORTS.includes(String(portInfo.port))) {
         return String(portInfo.port);
       }
     }
   } catch (_) {}
   const rawPort = String(process.env.HEALTH_PORT || process.env.PORT || '5080');
-  if (rawPort === '5005' || rawPort === '3000') {
+  if (FORBIDDEN_PORTS.includes(rawPort)) {
     return '5080';
   }
   return rawPort;
