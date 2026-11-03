@@ -756,6 +756,11 @@ async function doForward(message, target, tgManager, config, rateLimiter) {
   return tgMsgId;
 }
 
+// ─── Mini HTML escape untuk log string ───────────────────────────────────────
+function escapeHtmlMin(str) {
+  return String(str || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 // ─── Handler: Pesan Baru ──────────────────────────────────────────────────────
 async function handleNewMessage(message, channelMap, tgManager, config, rateLimiter) {
   const targetChannelId = getTargetChannelId(message.channel) || message.channelId;
@@ -870,6 +875,14 @@ async function handleNewMessage(message, channelMap, tgManager, config, rateLimi
     `${authorName} → TG Bot#${botKey}`,
     `#${channelName} | media: ${message.attachments?.size || 0}${tgThreadId ? ' | topic' : ''}`
   );
+
+  // ── Forward Delay (per-channel / per-category) ────────────────────────────
+  const effectiveDelay = channelStore.getEffectiveDelay(targetChannelId);
+  if (effectiveDelay > 0) {
+    logger.info(`⏳ Delay ${effectiveDelay}ms sebelum forward`, `#${channelName}`);
+    pushEvent('info', `⏳ Delay ${(effectiveDelay/1000).toFixed(1)}s — ${escapeHtmlMin(channelName)}`);
+    await new Promise(r => setTimeout(r, effectiveDelay));
+  }
 
   try {
     const tgMsgId = await doForward(message, target, tgManager, config, rateLimiter);

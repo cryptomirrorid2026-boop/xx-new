@@ -608,6 +608,17 @@ function renderGroupedChannels() {
                     <button class="btn-secondary btn-sm btn-cat-mute" data-category="${escapeHtml(catName)}" data-muted="${allMuted}" title="${allMuted ? 'Unmute Seluruh Kategori' : 'Mute Seluruh Kategori'}" style="font-size:0.75rem; padding:4px 9px;">
                         <i class='bx ${allMuted ? 'bx-volume-full' : 'bx-volume-mute'}'></i> ${allMuted ? 'Unmute All' : 'Mute All'}
                     </button>` : ''}
+                    <span class="cat-delay-wrapper" style="display:inline-flex;align-items:center;gap:4px;background:rgba(0,0,0,0.2);border:1px solid rgba(255,255,255,0.1);border-radius:7px;padding:3px 8px;" title="Delay kategori (detik, 0=tanpa delay)">
+                        <i class='bx bx-time-five' style="color:#a78bfa;font-size:0.9rem;"></i>
+                        <input type="number" min="0" step="1" class="cat-delay-input" data-category="${escapeHtml(catName)}"
+                          placeholder="0" title="Delay kategori (detik)"
+                          style="width:52px;padding:2px 4px;border-radius:5px;border:1px solid rgba(167,139,250,0.3);background:rgba(0,0,0,0.3);color:inherit;font-size:0.78rem;text-align:center;">
+                        <span style="font-size:0.7rem;color:var(--text-secondary)">s</span>
+                        <button class="btn-save-cat-delay" data-category="${escapeHtml(catName)}" title="Simpan delay kategori"
+                          style="padding:2px 6px;border-radius:5px;border:1px solid rgba(167,139,250,0.3);background:rgba(167,139,250,0.12);color:#a78bfa;cursor:pointer;font-size:0.76rem;">
+                          <i class='bx bx-save'></i>
+                        </button>
+                    </span>
                     <button class="btn-secondary btn-sm btn-cat-rename" data-category="${escapeHtml(catName)}" title="Ubah Nama Kategori" style="font-size:0.75rem; padding:4px 9px;">
                         <i class='bx bx-edit'></i> Rename
                     </button>
@@ -635,6 +646,7 @@ function renderGroupedChannels() {
                                 <th>Telegram Chat ID</th>
                                 <th>Bot Key / Thread</th>
                                 <th>Discord Webhook (DC-to-DC)</th>
+                                <th>Delay</th>
                                 <th>Status</th>
                                 <th>Actions</th>
                             </tr>
@@ -653,6 +665,19 @@ function renderGroupedChannels() {
                                     </td>
                                     <td style="font-family:monospace;font-size:.8rem;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${ch.dcWebhookUrl || ''}">
                                         ${ch.dcWebhookUrl ? '✅ Configured' + (ch.dcThreadId ? `<br><span class="tag" style="margin-top:2px;font-size:0.7rem;">Thread: ${ch.dcThreadId}</span>` : '') + (ch.dcAutoPing ? `<br><span class="tag" style="margin-top:2px;font-size:0.7rem;">Ping: ${ch.dcAutoPing}</span>` : '') : '<span style="color:var(--text-secondary)">—</span>'}
+                                    </td>
+                                    <td>
+                                      <div class="delay-cell" style="display:flex;align-items:center;gap:5px;min-width:110px;">
+                                        <input type="number" min="0" step="1" class="delay-input-ch" data-id="${ch.discordId}"
+                                          value="${typeof ch.forwardDelayMs === 'number' && ch.forwardDelayMs >= 0 ? Math.round(ch.forwardDelayMs/1000) : ''}"
+                                          placeholder="cat" title="Delay (detik). Kosong = ikut delay kategori"
+                                          style="width:65px;padding:4px 6px;border-radius:6px;border:1px solid rgba(255,255,255,0.12);background:rgba(0,0,0,0.3);color:inherit;font-size:0.8rem;text-align:center;">
+                                        <span style="font-size:0.72rem;color:var(--text-secondary)">s</span>
+                                        <button class="btn-set-delay" data-id="${ch.discordId}" title="Simpan delay"
+                                          style="padding:3px 6px;border-radius:5px;border:1px solid rgba(14,165,233,0.35);background:rgba(14,165,233,0.12);color:#38bdf8;cursor:pointer;font-size:0.76rem;">
+                                          <i class='bx bx-save'></i>
+                                        </button>
+                                      </div>
                                     </td>
                                     <td>${isMuted ? '<span class="tag muted-tag">🔇 Muted</span>' : '<span class="tag" style="background:rgba(16,185,129,.1);color:var(--success-color)">🟢 Active</span>'}</td>
                                     <td>
@@ -694,6 +719,17 @@ function renderGroupedChannels() {
         container.appendChild(card);
     });
 
+    // Load & isi nilai delay kategori di input
+    fetch(API + '/categories/delays').then(function(r) { return r.json(); }).then(function(delayMap) {
+        document.querySelectorAll('.cat-delay-input').forEach(function(inp) {
+            var cat = inp.dataset.category;
+            if (delayMap[cat] !== undefined) {
+                var secs = Math.round(delayMap[cat] / 1000);
+                inp.value = secs > 0 ? secs : '';
+            }
+        });
+    }).catch(function() {});
+
     // Wire-up event buttons di dalam tabel
     attachChannelActionListeners();
 }
@@ -734,6 +770,48 @@ function attachChannelActionListeners() {
             document.getElementById('test-msg-text').value = '';
             document.getElementById('btn-send-test').dataset.id = btn.dataset.id;
             openModal('modal-test-msg');
+        });
+    });
+
+    // ── Delay per-channel: simpan saat tombol save diklik ──
+    document.querySelectorAll('.btn-set-delay').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const id  = btn.dataset.id;
+            const inp = document.querySelector('.delay-input-ch[data-id="' + id + '"]');
+            const valStr = (inp && inp.value !== undefined ? inp.value : '').trim();
+            const delayMs = valStr === '' ? -1 : Math.max(0, Math.round(Number(valStr) * 1000));
+            try {
+                const resp = await fetch(API + '/channels/' + id + '/delay', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ delayMs: delayMs })
+                });
+                if (!resp.ok) throw new Error(await resp.text());
+                const label = delayMs < 0 ? 'ikut kategori' : (delayMs === 0 ? 'tanpa delay' : valStr + 's');
+                showToast('Delay channel diset: ' + label, 'success');
+                loadChannels();
+            } catch (err) { showToast('Gagal simpan delay: ' + err.message, 'error'); }
+        });
+    });
+
+    // ── Delay per-kategori: simpan saat tombol save diklik ──
+    document.querySelectorAll('.btn-save-cat-delay').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const cat = btn.dataset.category;
+            const inp = document.querySelector('.cat-delay-input[data-category="' + cat + '"]');
+            const valStr = (inp && inp.value !== undefined ? inp.value : '0').trim();
+            const delayMs = Math.max(0, Math.round(Number(valStr || 0) * 1000));
+            try {
+                const resp = await fetch(API + '/categories/' + encodeURIComponent(cat) + '/delay', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ delayMs: delayMs })
+                });
+                if (!resp.ok) throw new Error(await resp.text());
+                const label = delayMs === 0 ? 'tanpa delay' : valStr + 's';
+                showToast('Delay kategori "' + cat + '": ' + label, 'success');
+            } catch (err) { showToast('Gagal simpan delay kategori: ' + err.message, 'error'); }
         });
     });
 

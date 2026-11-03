@@ -307,7 +307,19 @@ function startWebServer(tgManager, channelMap, port = 7080, tg2dcStore = null) {
     res.json({ success: true, channel: ch });
   });
 
-  app.delete('/api/channels/:id', (req, res) => {
+  // ── Channel Delay ─────────────────────────────────────────────────────────
+  app.patch('/api/channels/:id/delay', (req, res) => {
+    const discordId = req.params.id;
+    // delayMs: angka ms, atau -1 untuk ikut kategori
+    const delayMs = typeof req.body.delayMs === 'number' ? req.body.delayMs : Number(req.body.delayMs ?? -1);
+    const ok = channelStore.setChannelDelay(discordId, delayMs);
+    if (!ok) return res.status(404).json({ error: 'Channel tidak ditemukan' });
+    const label = delayMs < 0 ? 'ikut kategori' : (delayMs === 0 ? 'tanpa delay' : `${delayMs}ms`);
+    pushEvent('info', `⏳ Delay channel <b>${discordId}</b> diset: ${label}`);
+    res.json({ success: true, discordId, delayMs });
+  });
+
+    app.delete('/api/channels/:id', (req, res) => {
     const ok = channelStore.remove(req.params.id);
     if (ok) { pushEvent('warning', `Channel mapping <b>${req.params.id}</b> deleted`); res.json({ success: true }); }
     else res.status(404).json({ error: 'Channel not found' });
@@ -368,7 +380,22 @@ function startWebServer(tgManager, channelMap, port = 7080, tg2dcStore = null) {
     res.json({ success: true, count });
   });
 
-  // ── Auto-Link & Bot Pool Endpoints ────────────────────────────
+  // ── Category Delay ─────────────────────────────────────────────────────────
+  app.patch('/api/categories/:name/delay', (req, res) => {
+    const catName = req.params.name;
+    const delayMs = typeof req.body.delayMs === 'number' ? req.body.delayMs : Number(req.body.delayMs ?? 0);
+    const ok = channelStore.setCategoryDelay(catName, delayMs);
+    if (!ok) return res.status(400).json({ error: 'Nama kategori tidak valid' });
+    const label = delayMs === 0 ? 'tanpa delay' : `${delayMs}ms`;
+    pushEvent('info', `⏳ Delay kategori <b>${catName}</b> diset: ${label}`);
+    res.json({ success: true, catName, delayMs });
+  });
+
+  app.get('/api/categories/delays', (_, res) => {
+    res.json(channelStore.getCategoryDelays());
+  });
+
+    // ── Auto-Link & Bot Pool Endpoints ────────────────────────────
   app.get('/api/autolink/bots', async (_, res) => {
     try {
       const bots = await discordBotPool.listBots();

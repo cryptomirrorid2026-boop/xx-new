@@ -34,12 +34,14 @@ const path   = require('path');
 const logger = require('./logger');
 
 const CHANNELS_FILE   = path.join(__dirname, '..', 'data', 'channels.json');
-const CATEGORIES_FILE = path.join(__dirname, '..', 'data', 'categories.json');
+const CATEGORIES_FILE    = path.join(__dirname, '..', 'data', 'categories.json');
+const CAT_DELAYS_FILE    = path.join(__dirname, '..', 'data', 'categoryDelays.json');
 
 class ChannelStore {
   constructor() {
     this.channels         = [];   // Array of channel objects
     this.customCategories = new Set(['General']); // Set of category names
+    this.categoryDelays   = new Map();            // Map<categoryName, delayMs>
     this._map             = null; // Reference ke Map utama bot (diisi via attachMap)
     this._tgManager       = null; // Reference ke tgManager (untuk validasi botKey)
     this._watcher         = null;
@@ -76,6 +78,7 @@ class ChannelStore {
             dcAutoPing: ch.dcAutoPing || null,
             dcOnlyWithMedia: ch.dcOnlyWithMedia === true,
             dcStripInvites: ch.dcStripInvites !== false,
+            forwardDelayMs: typeof ch.forwardDelayMs === 'number' ? ch.forwardDelayMs : -1,
           }));
           return true;
         }
@@ -83,6 +86,16 @@ class ChannelStore {
     } catch (err) {
       logger.warn('channelStore: gagal baca channels.json', err.message);
     }
+
+    // Load category delays
+    try {
+      if (fs.existsSync(CAT_DELAYS_FILE)) {
+        const raw = JSON.parse(fs.readFileSync(CAT_DELAYS_FILE, 'utf-8'));
+        if (raw && typeof raw === 'object') {
+          this.categoryDelays = new Map(Object.entries(raw).map(([k,v]) => [k, Number(v) || 0]));
+        }
+      }
+    } catch (_) {}
 
     try {
       if (fs.existsSync(CATEGORIES_FILE)) {
@@ -102,6 +115,16 @@ class ChannelStore {
       fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(Array.from(this.customCategories), null, 2), 'utf-8');
     } catch (err) {
       logger.warn('channelStore: gagal simpan categories.json', err.message);
+    }
+  }
+
+  _saveCategoryDelays() {
+    try {
+      this._ensureDir();
+      const obj = Object.fromEntries(this.categoryDelays);
+      fs.writeFileSync(CAT_DELAYS_FILE, JSON.stringify(obj, null, 2), 'utf-8');
+    } catch (err) {
+      logger.warn('channelStore: gagal simpan categoryDelays.json', err.message);
     }
   }
 
@@ -141,6 +164,7 @@ class ChannelStore {
         dcAutoPing: ch.dcAutoPing || null,
         dcOnlyWithMedia: ch.dcOnlyWithMedia === true,
         dcStripInvites: ch.dcStripInvites !== false,
+        forwardDelayMs: typeof ch.forwardDelayMs === 'number' ? ch.forwardDelayMs : -1,
         name:       ch.name,
       });
     }
@@ -250,6 +274,7 @@ class ChannelStore {
       dcAutoPing: channel.dcAutoPing || null,
       dcOnlyWithMedia: channel.dcOnlyWithMedia === true,
       dcStripInvites: channel.dcStripInvites !== false,
+      forwardDelayMs: typeof channel.forwardDelayMs === 'number' ? channel.forwardDelayMs : -1,
     };
 
     const idx = this.channels.findIndex(c => c.discordId === ch.discordId);
@@ -431,6 +456,53 @@ class ChannelStore {
       }
     }
     return affected;
+  }
+
+  /**
+   * Set forward delay untuk satu channel (dalam ms).
+   * Nilai -1 berarti ikut delay kategori. 0 = tanpa delay.
+   */
+  setChannelDelay(discordId, delayMs) {
+    const ch = this.channels.find(c => c.discordId === String(discordId));
+    if (!ch) return false;
+    ch.forwardDelayMs = typeof delayMs === 'number' ? Math.max(-1, delayMs) : -1;
+    this._save();
+    this._rebuildMap();
+    return true;
+  }
+
+  /**
+   * Set forward delay untuk seluruh channel di kategori tertentu.
+   * @param {string} categoryName
+   * @param {number} delayMs  — dalam milidetik (0 = tanpa delay)
+   */
+  setCategoryDelay(categoryName, delayMs) {
+    const name = String(categoryName || '').trim();
+    if (!name) return false;
+    const ms = typeof delayMs === 'number' ? Math.max(0, delayMs) : 0;
+    this.categoryDelays.set(name, ms);
+    this._saveCategoryDelays();
+    this._rebuildMap();
+    return true;
+  }
+
+  /**
+   * Ambil delay efektif sebuah channel (dalam ms).
+   * Priority: channel delay (-1 = pakai kategori) → category delay → 0
+   */
+  getEffectiveDelay(discordId) {
+    const ch = this.channels.find(c => c.discordId === String(discordId));
+    if (!ch) return 0;
+    if (typeof ch.forwardDelayMs === 'number' && ch.forwardDelayMs >= 0) {
+      return ch.forwardDelayMs;
+    }
+    const catDelay = this.categoryDelays.get(ch.category || 'General');
+    return typeof catDelay === 'number' ? catDelay : 0;
+  }
+
+  /** Ambil semua category delays sebagai plain object */
+  getCategoryDelays() {
+    return Object.fromEntries(this.categoryDelays);
   }
 
   get size() { return this.channels.length; }
