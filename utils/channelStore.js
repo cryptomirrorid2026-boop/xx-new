@@ -79,6 +79,9 @@ class ChannelStore {
             dcOnlyWithMedia: ch.dcOnlyWithMedia === true,
             dcStripInvites: ch.dcStripInvites !== false,
             forwardDelayMs: typeof ch.forwardDelayMs === 'number' ? ch.forwardDelayMs : -1,
+            lastActiveAt: ch.lastActiveAt || null,
+            lastCheckStatus: ch.lastCheckStatus || 'unknown',
+            lastCheckError: ch.lastCheckError || null,
           }));
           return true;
         }
@@ -275,9 +278,17 @@ class ChannelStore {
       dcOnlyWithMedia: channel.dcOnlyWithMedia === true,
       dcStripInvites: channel.dcStripInvites !== false,
       forwardDelayMs: typeof channel.forwardDelayMs === 'number' ? channel.forwardDelayMs : -1,
+      lastActiveAt: channel.lastActiveAt || null,
+      lastCheckStatus: channel.lastCheckStatus || 'unknown',
+      lastCheckError: channel.lastCheckError || null,
     };
 
     const idx = this.channels.findIndex(c => c.discordId === ch.discordId);
+    if (idx >= 0) {
+      ch.lastActiveAt = this.channels[idx].lastActiveAt || ch.lastActiveAt;
+      ch.lastCheckStatus = this.channels[idx].lastCheckStatus || ch.lastCheckStatus;
+      ch.lastCheckError = this.channels[idx].lastCheckError || ch.lastCheckError;
+    }
     if (idx >= 0) {
       this.channels[idx] = ch; // Update existing
     } else {
@@ -456,6 +467,100 @@ class ChannelStore {
       }
     }
     return affected;
+  }
+
+  /**
+   * Catat aktivitas terbaru saat ada pesan masuk / forward dari channel Discord ini
+   */
+  recordActivity(discordId) {
+    if (!discordId) return;
+    const ch = this.channels.find(c => c.discordId === String(discordId));
+    if (ch) {
+      ch.lastActiveAt = new Date().toISOString();
+      ch.lastCheckStatus = 'ok';
+      ch.lastCheckError = null;
+      this._save();
+    }
+  }
+
+  /**
+   * Update status hasil pengecekan keberadaan channel
+   */
+  updateHealthStatus(discordId, status, errorMsg = null) {
+    const ch = this.channels.find(c => c.discordId === String(discordId));
+    if (ch) {
+      ch.lastCheckStatus = status;
+      ch.lastCheckError = errorMsg;
+      this._save();
+    }
+  }
+
+  /**
+   * Periksa apakah setiap channel Discord masih ada dan bisa diakses oleh bot token
+   */
+  async checkAllChannelsHealth(discordRegistry) {
+    if (!discordRegistry) return { checked: 0, results: {} };
+    const clients = discordRegistry.getClients ? discordRegistry.getClients() : [];
+    const results = {};
+    let checked = 0;
+
+    for (const ch of this.channels) {
+      const id = String(ch.discordId);
+      checked++;
+      let found = false;
+      let errorReason = null;
+
+      if (clients.length === 0) {
+        // Jika client belum online/terhubung
+        results[id] = { status: 'unknown', reason: 'Bot Discord belum online' };
+        ch.lastCheckStatus = 'unknown';
+        ch.lastCheckError = 'Bot Discord belum online';
+        continue;
+      }
+
+      // 1. Cek di cache seluruh client
+      for (const c of clients) {
+        if (c.channels?.cache?.has(id)) {
+          found = true;
+          break;
+        }
+      }
+
+      // 2. Jika tidak ada di cache, coba fetch via API Discord
+      if (!found) {
+        for (const c of clients) {
+          try {
+            const fetched = await c.channels?.fetch(id).catch(err => {
+              if (err.code === 10003) errorReason = 'Channel dihapus/tidak ditemukan (Unknown Channel)';
+              else if (err.code === 50001) errorReason = 'Bot tidak memiliki akses ke channel (Missing Access)';
+              else errorReason = err.message;
+              return null;
+            });
+            if (fetched) {
+              found = true;
+              errorReason = null;
+              break;
+            }
+          } catch (e) {
+            errorReason = e.message;
+          }
+        }
+      }
+
+      if (found) {
+        ch.lastCheckStatus = 'ok';
+        ch.lastCheckError = null;
+        results[id] = { status: 'ok', name: ch.name };
+      } else {
+        const isDeleted = errorReason && (errorReason.includes('Unknown Channel') || errorReason.includes('10003'));
+        ch.lastCheckStatus = isDeleted ? 'not_found' : (errorReason && errorReason.includes('Missing Access') ? 'no_access' : 'inactive');
+        ch.lastCheckError = errorReason || 'Channel tidak ditemukan di server Discord';
+        results[id] = { status: ch.lastCheckStatus, reason: ch.lastCheckError, name: ch.name };
+      }
+    }
+
+    this._save();
+    return { checked, results };
   }
 
   /**

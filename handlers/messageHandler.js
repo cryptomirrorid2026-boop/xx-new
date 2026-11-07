@@ -751,6 +751,9 @@ async function doForward(message, target, tgManager, config, rateLimiter) {
     const targetChannelId = getTargetChannelId(message.channel) || message.channelId;
     messageStore.set(message.id, tgChatId, tgMsgId, botKey, msgType, dcWebhookUrl, dcMsgIdOut);
     stats.recordForward(targetChannelId);
+    if (channelStore?.recordActivity) {
+      channelStore.recordActivity(targetChannelId);
+    }
   }
 
   return tgMsgId;

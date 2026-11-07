@@ -338,8 +338,17 @@
                             <select id="channels-category-filter" class="category-select-filter">
                                 <option value="all">Semua Kategori (All)</option>
                             </select>
+                            <select id="channels-status-filter" class="category-select-filter" style="min-width: 150px;">
+                                <option value="all">Status: Semua</option>
+                                <option value="active">🟢 Hanya Aktif (On)</option>
+                                <option value="inactive">🔴 Tidak Aktif / Hilang</option>
+                                <option value="muted">🔇 Muted</option>
+                            </select>
                         </div>
                         <div class="category-toolbar-right">
+                            <button type="button" id="btn-check-channels-health" class="btn-secondary" style="font-size: 0.82rem; padding: 8px 14px; background: rgba(56, 189, 248, 0.1); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);" title="Periksa apakah channel Discord masih ada atau sudah dihapus">
+                                <i class='bx bx-pulse'></i> Cek Keaktifan Channel
+                            </button>
                             <button type="button" id="btn-toggle-all-cats" class="btn-secondary" style="font-size: 0.82rem; padding: 8px 14px;">
                                 <i class='bx bx-expand-vertical'></i> Expand / Collapse All
                             </button>

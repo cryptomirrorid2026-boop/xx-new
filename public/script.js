@@ -462,6 +462,7 @@ let allChannelsData = [];
 let allCustomCategories = [];
 let allMutedSet = new Set();
 let currentCategoryFilter = 'all';
+let currentStatusFilter = 'all';
 let currentSearchQuery = '';
 let collapsedCategories = new Set(JSON.parse(localStorage.getItem('nexus_collapsed_cats') || '[]'));
 
@@ -679,7 +680,19 @@ function renderGroupedChannels() {
                                         </button>
                                       </div>
                                     </td>
-                                    <td>${isMuted ? '<span class="tag muted-tag">🔇 Muted</span>' : '<span class="tag" style="background:rgba(16,185,129,.1);color:var(--success-color)">🟢 Active</span>'}</td>
+                                    <td>${(() => {
+                                        if (isMuted) return '<span class="tag muted-tag">🔇 Muted</span>';
+                                        if (ch.lastCheckStatus === 'not_found') {
+                                            return '<span class="tag" style="background:rgba(239,68,68,0.15);color:#f87171;border:1px solid rgba(239,68,68,0.3);font-weight:700;" title="' + escapeHtml(ch.lastCheckError || 'Channel dihapus di Discord') + '">🔴 Tidak Ditemukan</span>';
+                                        }
+                                        if (ch.lastCheckStatus === 'no_access') {
+                                            return '<span class="tag" style="background:rgba(245,158,11,0.15);color:#fbbf24;border:1px solid rgba(245,158,11,0.3);font-weight:700;" title="' + escapeHtml(ch.lastCheckError || 'Bot tidak ada akses') + '">🟡 No Access</span>';
+                                        }
+                                        if (ch.lastCheckStatus === 'inactive') {
+                                            return '<span class="tag" style="background:rgba(239,68,68,0.15);color:#f87171;border:1px solid rgba(239,68,68,0.3);" title="' + escapeHtml(ch.lastCheckError || 'Tidak aktif') + '">🔴 Inactive</span>';
+                                        }
+                                        return '<span class="tag" style="background:rgba(16,185,129,.1);color:var(--success-color)">🟢 Active</span>';
+                                    })()}</td>
                                     <td>
                                         <div class="action-btns">
                                             <button class="btn-mute ${isMuted ? 'muted' : ''}" data-id="${ch.discordId}" data-muted="${isMuted}" title="${isMuted ? 'Unmute' : 'Mute'}">
@@ -919,6 +932,52 @@ if (channelsSearchInput) {
             currentSearchQuery = e.target.value.trim();
             renderGroupedChannels();
         }, 200);
+    });
+}
+
+// Status Filter (All / Active / Inactive / Muted)
+const channelsStatusFilter = document.getElementById('channels-status-filter');
+if (channelsStatusFilter) {
+    channelsStatusFilter.addEventListener('change', e => {
+        currentStatusFilter = e.target.value;
+        renderGroupedChannels();
+    });
+}
+
+// Tombol Cek Keaktifan Channel
+const btnCheckHealth = document.getElementById('btn-check-channels-health');
+if (btnCheckHealth) {
+    btnCheckHealth.addEventListener('click', async () => {
+        const origHtml = btnCheckHealth.innerHTML;
+        btnCheckHealth.disabled = true;
+        btnCheckHealth.innerHTML = "<i class='bx bx-loader-alt bx-spin'></i> Memeriksa...";
+        showToast('Sedang memeriksa keaktifan seluruh channel Discord...', 'info');
+
+        try {
+            const resp = await fetch(API + '/channels/check-health', { method: 'POST' });
+            const data = await resp.json();
+            if (data.success) {
+                const results = data.results || {};
+                let notFoundCount = 0;
+                Object.values(results).forEach(r => {
+                    if (r.status === 'not_found' || r.status === 'no_access' || r.status === 'inactive') notFoundCount++;
+                });
+
+                if (notFoundCount > 0) {
+                    showToast('Pemeriksaan selesai: Ditemukan ' + notFoundCount + ' channel tidak aktif!', 'warning');
+                } else {
+                    showToast('Pemeriksaan selesai: Semua channel aktif & normal!', 'success');
+                }
+                await loadChannels();
+            } else {
+                showToast('Gagal memeriksa channel: ' + (data.error || 'Unknown error'), 'error');
+            }
+        } catch (err) {
+            showToast('Error cek channel: ' + err.message, 'error');
+        } finally {
+            btnCheckHealth.disabled = false;
+            btnCheckHealth.innerHTML = origHtml;
+        }
     });
 }
 

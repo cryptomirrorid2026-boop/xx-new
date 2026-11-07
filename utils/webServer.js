@@ -17,6 +17,7 @@ const messageStore      = require('./messageStore');
 const blockedUsersStore = require('./blockedUsersStore');
 const mutedChannels     = require('./mutedChannels');
 const channelStore      = require('./channelStore');
+const discordRegistry   = require('./discordRegistry');
 const envManager        = require('./envManager');
 const watermarkManager  = require('./watermarkManager');
 const cropManager       = require('./cropManager');
@@ -198,6 +199,38 @@ function startWebServer(tgManager, channelMap, port = 7080, tg2dcStore = null) {
       system: { heapUsedMB: toMB(mem.heapUsed), freeRamMB: Math.round(os.freemem() / 1024 / 1024), cpuLoad1m: os.loadavg()[0].toFixed(2) },
       bot:    { telegramBots: tgManager.size, activeChannels: channelMap.size, mutedChannels: mutedChannels.size, blockedUsers: blockedUsersStore.size, storedMessages: messageStore.size },
     });
+  });
+
+
+  // ── Channels Health & Active Check ────────────────────────────
+  app.post('/api/channels/check-health', async (_, res) => {
+    try {
+      pushEvent('info', '🔍 Sedang memeriksa status keaktifan seluruh channel Discord...');
+      const checkResult = await channelStore.checkAllChannelsHealth(discordRegistry);
+      const notFoundCount = Object.values(checkResult.results).filter(r => r.status === 'not_found' || r.status === 'inactive').length;
+      if (notFoundCount > 0) {
+        pushEvent('warning', `⚠️ Pemeriksaan selesai: <b>${notFoundCount} channel</b> terdeteksi tidak aktif / sudah dihapus!`);
+      } else {
+        pushEvent('success', '✅ Semua channel Discord terdeteksi aktif dan dapat diakses.');
+      }
+      res.json({ success: true, ...checkResult });
+    } catch (err) {
+      pushEvent('error', `Gagal memeriksa channel: ${err.message}`);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/channels/health-status', (_, res) => {
+    const channels = channelStore.list();
+    const statusMap = {};
+    channels.forEach(c => {
+      statusMap[c.discordId] = {
+        status: c.lastCheckStatus || 'unknown',
+        lastActiveAt: c.lastActiveAt || null,
+        error: c.lastCheckError || null,
+      };
+    });
+    res.json(statusMap);
   });
 
   // ── Channels CRUD ───────────────────────────────────────────
