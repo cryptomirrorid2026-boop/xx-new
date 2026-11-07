@@ -534,12 +534,23 @@ function renderGroupedChannels() {
     allChannelsData.forEach(c => { catNames.add(c.category || 'General'); });
     const distinctCats = Array.from(catNames).sort();
 
-    // Filter data berdasarkan Kategori & Search Query
+    // Filter data berdasarkan Kategori, Status Keaktifan & Search Query
     const query = currentSearchQuery.toLowerCase().trim();
     const filtered = allChannelsData.filter(ch => {
         const cat = ch.category || 'General';
         const matchCat = currentCategoryFilter === 'all' || cat.toLowerCase() === currentCategoryFilter.toLowerCase();
         if (!matchCat) return false;
+
+        // Filter status keaktifan (All / Active / Inactive / Muted)
+        if (currentStatusFilter === 'active') {
+            const isMuted = allMutedSet.has(ch.discordId);
+            if (isMuted || ch.lastCheckStatus !== 'ok') return false;
+        } else if (currentStatusFilter === 'inactive') {
+            const isBad = ch.lastCheckStatus === 'not_found' || ch.lastCheckStatus === 'no_access' || ch.lastCheckStatus === 'inactive';
+            if (!isBad) return false;
+        } else if (currentStatusFilter === 'muted') {
+            if (!allMutedSet.has(ch.discordId)) return false;
+        }
 
         if (!query) return true;
         return (
@@ -691,7 +702,11 @@ function renderGroupedChannels() {
                                         if (ch.lastCheckStatus === 'inactive') {
                                             return '<span class="tag" style="background:rgba(239,68,68,0.15);color:#f87171;border:1px solid rgba(239,68,68,0.3);" title="' + escapeHtml(ch.lastCheckError || 'Tidak aktif') + '">🔴 Inactive</span>';
                                         }
-                                        return '<span class="tag" style="background:rgba(16,185,129,.1);color:var(--success-color)">🟢 Active</span>';
+                                        if (ch.lastCheckStatus === 'ok') {
+                                            const lastActive = ch.lastActiveAt ? ` (Terakhir aktif: ${new Date(ch.lastActiveAt).toLocaleTimeString('id-ID')})` : '';
+                                            return `<span class="tag" style="background:rgba(16,185,129,.1);color:var(--success-color);border:1px solid rgba(16,185,129,0.25);" title="Channel aktif & normal${lastActive}">🟢 Active</span>`;
+                                        }
+                                        return '<span class="tag" style="background:rgba(148,163,184,0.15);color:#94a3b8;border:1px solid rgba(148,163,184,0.3);" title="Belum diperiksa atau sedang auto-check 24 jam">⚪ Memeriksa...</span>';
                                     })()}</td>
                                     <td>
                                         <div class="action-btns">
@@ -2067,7 +2082,15 @@ function connectSSE() {
         const url = token ? `${API}/events?key=${encodeURIComponent(token)}` : `${API}/events`;
         es = new EventSource(url);
         es.onopen = () => { sseConnected = true; sseStatus.className = 'sse-status'; };
-        es.onmessage = e => { try { addLogEntry(JSON.parse(e.data)); } catch {} };
+        es.onmessage = e => {
+            try {
+                const ev = JSON.parse(e.data);
+                addLogEntry(ev);
+                if (ev.type === 'channel_health_updated' || ev.type === 'channels_updated') {
+                    loadChannels();
+                }
+            } catch {}
+        };
         es.onerror = () => { sseConnected = false; sseStatus.className = 'sse-status disconnected'; es.close(); setTimeout(connect, 5000); };
     }
     connect();
@@ -5675,3 +5698,13 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
+
+
+// Auto-refresh tab channel setiap 30 detik agar selalu terupdate 24 jam
+setInterval(() => {
+    /* nexus_channels_tab_refresher */
+    const secCh = document.getElementById('section-channels');
+    if (secCh && !secCh.classList.contains('hidden') && (secCh.classList.contains('active') || secCh.style.display !== 'none')) {
+        loadChannels();
+    }
+}, 30000);

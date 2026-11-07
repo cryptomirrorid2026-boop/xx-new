@@ -32,7 +32,7 @@ const blockedUsersStore     = require('./utils/blockedUsersStore');
 const mutedChannels         = require('./utils/mutedChannels');
 const channelStore          = require('./utils/channelStore');
 const forwardQueue          = require('./utils/forwardQueue');
-const { startWebServer }    = require('./utils/webServer');
+const { startWebServer, pushEvent } = require('./utils/webServer');
 const { registerHandlers }  = require('./handlers/messageHandler');
 const { registerTelegramCommands } = require('./handlers/telegramCommands');
 const tg2dcStore            = require('./utils/tgToDiscordStore');
@@ -320,6 +320,7 @@ tgManager.verifyAll().then(results => {
 // ─── Buat Discord Clients (Multi Token) ──────────────────────────────────────
 const discordTokens = parseDiscordTokens();
 let tg2dcInitialized = false;
+let channelHealthCheckerStarted = false;
 
 // Inisialisasi AutoLinkManager (Auto-sync listener channel baru)
 autoLinkManager.init(discordRegistry);
@@ -340,6 +341,12 @@ discordTokens.forEach((token, idx) => {
     logger.info(`Akun #${accountNum} terdaftar di ${c.guilds.cache.size} server`);
     registerHandlers(client, tgManager, channelMap, config, rateLimiter);
     
+    // ─── Pengecekan Keaktifan Channel 24 Jam Otomatis (Background) ───
+    if (!channelHealthCheckerStarted) {
+      channelHealthCheckerStarted = true;
+      channelStore.start24hAutoHealthCheck(discordRegistry, 10 * 60 * 1000, pushEvent);
+    }
+    
     // Inisialisasi TG->DC menggunakan client pertama yang ready
     if (!tg2dcInitialized && tg2dcConfig.enabled) {
       tg2dcInitialized = true;
@@ -357,6 +364,25 @@ discordTokens.forEach((token, idx) => {
     } else if (!tg2dcInitialized && !tg2dcConfig.enabled && accountNum === 1) {
       tg2dcInitialized = true;
       logger.info('TG→DC: Dinonaktifkan (TG_TO_DC_ENABLED=false di .env)');
+    }
+  });
+
+  // ─── Real-time Event Deteksi Channel Dihapus / Hilang Akses ───
+  client.on('channelDelete', (ch) => {
+    logger.warn(`⚠️ Channel Discord dihapus: ${ch.name || ch.id} (${ch.id})`);
+    channelStore.updateHealthStatus(ch.id, 'not_found', 'Channel baru saja dihapus di Discord');
+    if (typeof pushEvent === 'function') {
+      pushEvent('warning', `⚠️ Channel <b>#${escapeHtmlMin(ch.name || ch.id)}</b> baru saja dihapus di Discord!`);
+      pushEvent('channel_health_updated', { id: ch.id, status: 'not_found' });
+    }
+  });
+
+  client.on('guildDelete', (guild) => {
+    logger.warn(`⚠️ Bot dikeluarkan dari server Discord: ${guild.name} (${guild.id})`);
+    channelStore.handleGuildDelete(guild.id);
+    if (typeof pushEvent === 'function') {
+      pushEvent('warning', `⚠️ Bot dikeluarkan dari server <b>${escapeHtmlMin(guild.name)}</b>!`);
+      pushEvent('channel_health_updated', { guildId: guild.id });
     }
   });
 

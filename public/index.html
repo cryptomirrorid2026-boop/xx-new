@@ -345,9 +345,12 @@
                                 <option value="muted">🔇 Muted</option>
                             </select>
                         </div>
-                        <div class="category-toolbar-right">
-                            <button type="button" id="btn-check-channels-health" class="btn-secondary" style="font-size: 0.82rem; padding: 8px 14px; background: rgba(56, 189, 248, 0.1); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);" title="Periksa apakah channel Discord masih ada atau sudah dihapus">
-                                <i class='bx bx-pulse'></i> Cek Keaktifan Channel
+                        <div class="category-toolbar-right" style="display:flex; align-items:center; gap:8px;">
+                            <span id="health-auto-badge" style="font-size:0.75rem; color:#10b981; background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.25); border-radius:6px; padding:6px 10px; display:inline-flex; align-items:center; gap:5px;" title="Sistem memverifikasi seluruh channel Discord secara berkala 24/7 di latar belakang">
+                                <span class="status-pulse" style="width:7px; height:7px; background:#10b981; border-radius:50%; display:inline-block;"></span> 24/7 Auto-Check Aktif
+                            </span>
+                            <button type="button" id="btn-check-channels-health" class="btn-secondary" style="font-size: 0.82rem; padding: 8px 14px; background: rgba(56, 189, 248, 0.1); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);" title="Periksa apakah channel Discord masih ada atau sudah dihapus sekarang">
+                                <i class='bx bx-pulse'></i> Cek Keaktifan Sekarang
                             </button>
                             <button type="button" id="btn-toggle-all-cats" class="btn-secondary" style="font-size: 0.82rem; padding: 8px 14px;">
                                 <i class='bx bx-expand-vertical'></i> Expand / Collapse All

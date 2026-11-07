@@ -46,6 +46,9 @@ class ChannelStore {
     this._tgManager       = null; // Reference ke tgManager (untuk validasi botKey)
     this._watcher         = null;
     this._debounce        = null;
+    this.autoHealthTimer       = null;
+    this.lastAutoHealthCheckAt = null;
+    this.pushEventFn           = null;
     this._ensureDir();
     this._load();
   }
@@ -496,6 +499,39 @@ class ChannelStore {
   }
 
   /**
+   * Mulai sistem pengecekan keaktifan channel otomatis 24 Jam Non-stop
+   */
+  start24hAutoHealthCheck(discordRegistry, intervalMs = 10 * 60 * 1000, pushEventFn = null) {
+    if (this.autoHealthTimer) {
+      clearInterval(this.autoHealthTimer);
+      this.autoHealthTimer = null;
+    }
+    if (pushEventFn) {
+      this.pushEventFn = pushEventFn;
+    }
+
+    logger.info(`🛡️ [Channel Health 24/7] Auto-checker aktif! Memeriksa status berkala setiap ${Math.round(intervalMs / 60000)} menit.`);
+
+    // Jalankan pemeriksaan awal segera (delay 5 detik agar cache Discord terisi)
+    setTimeout(() => {
+      this.checkAllChannelsHealth(discordRegistry).catch(err => {
+        logger.warn('[Channel Health 24/7] Error pada cek awal:', err.message);
+      });
+    }, 5000);
+
+    // Jalankan berulang 24 jam nonstop
+    this.autoHealthTimer = setInterval(() => {
+      this.checkAllChannelsHealth(discordRegistry).catch(err => {
+        logger.warn('[Channel Health 24/7] Error pada cek berkala:', err.message);
+      });
+    }, intervalMs);
+
+    if (this.autoHealthTimer.unref) {
+      this.autoHealthTimer.unref();
+    }
+  }
+
+  /**
    * Periksa apakah setiap channel Discord masih ada dan bisa diakses oleh bot token
    */
   async checkAllChannelsHealth(discordRegistry) {
@@ -504,42 +540,90 @@ class ChannelStore {
     const results = {};
     let checked = 0;
 
+    // Filter client yang sudah siap/terkoneksi
+    const readyClients = clients.filter(c => c && (c.isReady ? c.isReady() : (c.ws?.status === 0 || c.user)));
+
+    if (readyClients.length === 0) {
+      logger.warn('[Channel Health 24/7] Discord client belum online, menunda verifikasi status.');
+      for (const ch of this.channels) {
+        if (!ch.lastCheckStatus || ch.lastCheckStatus === 'unknown') {
+          ch.lastCheckStatus = 'unknown';
+          ch.lastCheckError = 'Menunggu Discord bot online...';
+        }
+        results[ch.discordId] = { status: ch.lastCheckStatus, reason: ch.lastCheckError, name: ch.name };
+      }
+      return { checked: 0, results };
+    }
+
+    // Bangun map ID channel dari cache seluruh client (0ms, tidak makan kuota REST)
+    const cachedChannelMap = new Map();
+    for (const c of readyClients) {
+      if (c.channels?.cache) {
+        for (const [chId, chObj] of c.channels.cache) {
+          if (!cachedChannelMap.has(chId)) {
+            cachedChannelMap.set(chId, chObj);
+          }
+        }
+      }
+    }
+
     for (const ch of this.channels) {
       const id = String(ch.discordId);
       checked++;
       let found = false;
       let errorReason = null;
+      let checkStatus = 'ok';
 
-      if (clients.length === 0) {
-        // Jika client belum online/terhubung
-        results[id] = { status: 'unknown', reason: 'Bot Discord belum online' };
-        ch.lastCheckStatus = 'unknown';
-        ch.lastCheckError = 'Bot Discord belum online';
-        continue;
-      }
-
-      // 1. Cek di cache seluruh client
-      for (const c of clients) {
-        if (c.channels?.cache?.has(id)) {
+      // 1. Cek di cache memori Discord
+      if (cachedChannelMap.has(id)) {
+        const cachedCh = cachedChannelMap.get(id);
+        if (cachedCh && cachedCh.viewable === false) {
+          found = false;
+          checkStatus = 'no_access';
+          errorReason = 'Bot tidak memiliki hak akses melihat channel ini (viewable: false)';
+        } else {
           found = true;
-          break;
+          checkStatus = 'ok';
+          errorReason = null;
         }
       }
 
-      // 2. Jika tidak ada di cache, coba fetch via API Discord
-      if (!found) {
-        for (const c of clients) {
+      // 2. Jika tidak ada di cache, coba fetch dengan proteksi rate limit
+      if (!found && checkStatus !== 'no_access') {
+        for (const c of readyClients) {
           try {
+            // Beri jeda kecil agar aman dari rate limit REST API
+            await new Promise(r => setTimeout(r, 60));
             const fetched = await c.channels?.fetch(id).catch(err => {
-              if (err.code === 10003) errorReason = 'Channel dihapus/tidak ditemukan (Unknown Channel)';
-              else if (err.code === 50001) errorReason = 'Bot tidak memiliki akses ke channel (Missing Access)';
-              else errorReason = err.message;
+              if (err.code === 10003) {
+                errorReason = 'Channel dihapus atau tidak ditemukan di Discord (Code 10003: Unknown Channel)';
+                checkStatus = 'not_found';
+              } else if (err.code === 50001) {
+                errorReason = 'Bot tidak ada di server ini atau tidak memiliki izin akses (Code 50001: Missing Access)';
+                checkStatus = 'no_access';
+              } else if (err.code === 50004) {
+                errorReason = 'Server Discord sedang down/tidak dapat diakses (Code 50004)';
+                checkStatus = 'inactive';
+              } else if (err.status === 429) {
+                errorReason = 'Discord API rate limit hit';
+              } else {
+                errorReason = err.message;
+              }
               return null;
             });
+
             if (fetched) {
-              found = true;
-              errorReason = null;
-              break;
+              if (fetched.viewable === false) {
+                found = false;
+                checkStatus = 'no_access';
+                errorReason = 'Bot tidak memiliki hak akses melihat channel ini (viewable: false)';
+              } else {
+                found = true;
+                checkStatus = 'ok';
+                errorReason = null;
+                cachedChannelMap.set(id, fetched);
+                break;
+              }
             }
           } catch (e) {
             errorReason = e.message;
@@ -552,15 +636,47 @@ class ChannelStore {
         ch.lastCheckError = null;
         results[id] = { status: 'ok', name: ch.name };
       } else {
-        const isDeleted = errorReason && (errorReason.includes('Unknown Channel') || errorReason.includes('10003'));
-        ch.lastCheckStatus = isDeleted ? 'not_found' : (errorReason && errorReason.includes('Missing Access') ? 'no_access' : 'inactive');
-        ch.lastCheckError = errorReason || 'Channel tidak ditemukan di server Discord';
+        ch.lastCheckStatus = checkStatus !== 'ok' ? checkStatus : 'inactive';
+        ch.lastCheckError = errorReason || 'Channel tidak ditemukan di seluruh akun Discord bot';
         results[id] = { status: ch.lastCheckStatus, reason: ch.lastCheckError, name: ch.name };
       }
     }
 
+    this.lastAutoHealthCheckAt = new Date().toISOString();
     this._save();
-    return { checked, results };
+
+    const notFoundCount = Object.values(results).filter(r => r.status === 'not_found' || r.status === 'no_access' || r.status === 'inactive').length;
+    logger.info(`🛡️ [Channel Health 24/7] Selesai memeriksa ${checked} channel. Normal: ${checked - notFoundCount}, Bermasalah: ${notFoundCount}`);
+
+    if (this.pushEventFn) {
+      if (notFoundCount > 0) {
+        this.pushEventFn('warning', `🛡️ [Health Check 24/7] Ditemukan <b>${notFoundCount} channel</b> yang tidak aktif / dihapus!`);
+      }
+      this.pushEventFn('channel_health_updated', {
+        checked,
+        notFoundCount,
+        lastCheckedAt: this.lastAutoHealthCheckAt,
+        results
+      });
+    }
+
+    return { checked, notFoundCount, results, lastCheckedAt: this.lastAutoHealthCheckAt };
+  }
+
+  /**
+   * Handle jika ada guild yang bot-nya dikeluarkan
+   */
+  handleGuildDelete(guildId) {
+    if (!guildId) return;
+    let count = 0;
+    for (const ch of this.channels) {
+      if (ch.targetGuildId === String(guildId)) {
+        ch.lastCheckStatus = 'no_access';
+        ch.lastCheckError = 'Bot telah dikeluarkan dari server Discord ini';
+        count++;
+      }
+    }
+    if (count > 0) this._save();
   }
 
   /**
