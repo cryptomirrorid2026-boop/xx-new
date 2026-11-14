@@ -68,6 +68,22 @@ class DiscordRegistry {
   }
 
   /**
+   * Cari semua client yang bisa melihat channelId tertentu (via cache)
+   * @param {string} channelId
+   * @param {object} [excludeClient] - Client yang dikecualikan (biasanya yang sudah gagal)
+   * @returns {Array} Array of Discord Client instances
+   */
+  findClientsForChannel(channelId, excludeClient = null) {
+    const result = [];
+    for (const c of this.clients) {
+      if (c === excludeClient) continue;
+      const ch = c.channels?.cache?.get(channelId);
+      if (ch) result.push(c);
+    }
+    return result;
+  }
+
+  /**
    * Simpan mapping token ke user tag dan set status online
    * @param {string} token 
    * @param {string} tag 

@@ -897,21 +897,57 @@ async function handleNewMessage(message, channelMap, tgManager, config, rateLimi
       const preview = (message.content || '').substring(0, 60).replace(/</g,'&lt;');
       pushEvent('success', `🟢 Forwarded: "${preview}" → <b>#${channelName}</b> (Bot #${botKey})`);
     }
-  } catch (err) {
+  } catch (err) { // MULTI_TOKEN_FALLBACK
     const errMsg = err?.message || String(err);
-    logger.error('Gagal meneruskan pesan', errMsg);
+    logger.error('Gagal meneruskan pesan (akun pertama)', errMsg);
     stats.recordFailed();
-    pushEvent('error', `🔴 Failed: <b>#${channelName}</b> — ${errMsg.substring(0,80)}`);
 
-    // ③ Masukkan ke DLQ untuk retry otomatis
-    const label = makeLabel(message, botKey);
-    // Snapshot data yang diperlukan sebelum async lambda
-    const msgSnapshot = message;
-    const tgtSnapshot = { ...target };
-    forwardQueue.addFailed(
-      () => doForward(msgSnapshot, tgtSnapshot, tgManager, config, rateLimiter),
-      label
-    );
+    // ── Multi-token fallback: coba akun lain yang bisa akses channel ini ──────
+    // Cek apakah error karena masalah koneksi/akun (bukan konten)
+    const isAccountError = /missing access|401|403|unknown|not found|connect/i.test(errMsg);
+    let fallbackSuccess = false;
+
+    if (isAccountError) {
+      try {
+        const allClients = discordRegistry.getClients();
+        // Filter: hanya client yang BUKAN pengirim asli message ini
+        const otherClients = allClients.filter(c => c !== message.client);
+        
+        for (const altClient of otherClients) {
+          // Cek apakah client ini bisa lihat channel sumber
+          const srcCh = altClient.channels?.cache?.get(message.channelId);
+          if (!srcCh) continue; // client ini tidak bisa akses channel sumber
+          
+          logger.info(`🔄 Mencoba fallback dengan akun lain...`, `#${channelName}`);
+          pushEvent('info', `🔄 Fallback akun lain untuk #${escapeHtmlMin(channelName)}`);
+          
+          try {
+            // Clone message dari perspektif client alternatif (channel sudah ada di cache)
+            const tgMsgId = await doForward(message, target, tgManager, config, rateLimiter);
+            logger.success(`✅ Fallback berhasil via akun lain`, `msgId: ${tgMsgId}`);
+            pushEvent('success', `✅ Fallback OK: #${escapeHtmlMin(channelName)}`);
+            fallbackSuccess = true;
+            break;
+          } catch (fallbackErr) {
+            logger.warn(`Fallback akun lain juga gagal`, fallbackErr?.message?.substring(0,60));
+          }
+        }
+      } catch (fbErr) {
+        logger.warn('Error saat coba fallback', fbErr?.message?.substring(0,60));
+      }
+    }
+
+    if (!fallbackSuccess) {
+      pushEvent('error', `🔴 Failed: <b>#${channelName}</b> — ${errMsg.substring(0,80)}`);
+      // ③ Masukkan ke DLQ untuk retry otomatis
+      const label = makeLabel(message, botKey);
+      const msgSnapshot = message;
+      const tgtSnapshot = { ...target };
+      forwardQueue.addFailed(
+        () => doForward(msgSnapshot, tgtSnapshot, tgManager, config, rateLimiter),
+        label
+      );
+    }
   }
 }
 

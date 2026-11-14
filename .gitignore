@@ -8,6 +8,8 @@
 *.env
 *.env.local
 !.env.example
+patch_*.js
+fix_*.js
 
 # ─── 2. DATABASE & SQLITE CACHE (ANTI-TIMPA DATA VPS) ───────
 # Menjamin data pelanggan, transaksi, dan saldo nyata di VPS
